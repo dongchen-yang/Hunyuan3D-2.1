@@ -30,9 +30,9 @@ TS="$(date +%Y%m%d-%H%M%S)"
 # on sys.path for ANY python3.10 env -- without this, packages silently shadow the
 # ones this script just installed. Both must be set for every `python`/`pip`
 # invocation in this env, not just during install.
-# Unconditional (not `${TMPDIR:-...}`) -- the whole point is this script must not
-# depend on whatever TMPDIR the caller's shell happened to inherit from /tmp.
-export TMPDIR=/local-scratch/localhome/dya78/tmp
+# Parameterized to support cluster replay: local path is /local-scratch/localhome/dya78/tmp,
+# but venus cluster uses /localscratch/dya78/tmp (set LIGHTGEN_TMPDIR before sourcing).
+export TMPDIR="${LIGHTGEN_TMPDIR:-/local-scratch/localhome/dya78/tmp}"
 mkdir -p "$TMPDIR"
 export PYTHONNOUSERSITE=1
 
