@@ -120,10 +120,20 @@ conda run -n hunyuanpaint bash -c \
     2>&1 | tee "log/${TS}-hunyuanpaint-pytest.log"
 
 # ---------------------------------------------------------------------------
+# Step 4b (LightGen Task 8): wandb client. train.py's logger block targets
+# pytorch_lightning.loggers.WandbLogger (project "LightGen") -- not in requirements.txt
+# because upstream never used it (TensorBoard). Needed before any real train.py run;
+# not exercised by smoke_load_pretrained.py or smoke_train_step.py (neither touches the
+# Trainer/logger), so its absence would not surface until Task 9's actual training job.
+conda run -n hunyuanpaint bash -c \
+    'pip install wandb' \
+    2>&1 | tee "log/${TS}-hunyuanpaint-wandb.log"
+
+# ---------------------------------------------------------------------------
 # Step 5: smoke test -- strict-load the pretrained paint-pbr snapshot through the
 # custom pipeline. Downloads a multi-GB HF snapshot on first run; let it finish.
 conda run -n hunyuanpaint bash -c \
     'export PYTHONNOUSERSITE=1; python hy3dpaint/scripts/lightgen/smoke_load_pretrained.py' \
     2>&1 | tee "log/${TS}-hunyuanpaint-smoke.log"
 
-echo "Done. See log/${TS}-hunyuanpaint-{torch,env,pytest,smoke}.log for the full record."
+echo "Done. See log/${TS}-hunyuanpaint-{torch,env,pytest,wandb,smoke}.log for the full record."

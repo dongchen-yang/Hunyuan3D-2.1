@@ -305,12 +305,18 @@ if __name__ == "__main__":
     trainer_kwargs = dict()
 
     # logger
+    # LightGen: wandb, not TensorBoard -- all training runs log to the single wandb
+    # project "LightGen" (see AGENTS.md naming conventions). Run name defaults to the
+    # upstream cfg_name+exp_name but is overridable via LIGHTGEN_WANDB_NAME (set by the
+    # sbatch launch script, e.g. "mvpaint_pbr->emission_overfit10_v1"). WANDB_MODE=offline
+    # in the environment routes this to an offline run for later `wandb sync`.
     default_logger_cfg = {
-        "target": "pytorch_lightning.loggers.TensorBoardLogger",
+        "target": "pytorch_lightning.loggers.WandbLogger",
         "params": {
-            "name": "tensorboard",
+            "project": "LightGen",
+            "name": os.environ.get("LIGHTGEN_WANDB_NAME", cfg_name + exp_name),
             "save_dir": logdir,
-            "version": "0",
+            "offline": os.environ.get("WANDB_MODE", "") == "offline",
         },
     }
     logger_cfg = OmegaConf.merge(default_logger_cfg)
