@@ -962,6 +962,26 @@ class UNet2p5DConditionModel(torch.nn.Module):
         if "cache" not in cached_condition:
             cached_condition["cache"] = {}
 
+        # lightgen: conv_in channel assignment is POSITIONAL -- each condition's channel offset is
+        # just its rank in this concat, so a missing condition silently slides every later one
+        # onto the wrong (pretrained) channels rather than failing. Guard the invariant before
+        # any of it runs. Entirely inert upstream: neither PBR key is ever set there.
+        if "embeds_albedo" in cached_condition or "embeds_mr" in cached_condition:
+            if "embeds_mr" in cached_condition and "embeds_albedo" not in cached_condition:
+                raise RuntimeError(
+                    "lightgen: embeds_mr without embeds_albedo -- mr would land on conv_in "
+                    "channels 12-15 (albedo's) instead of 16-19."
+                )
+            missing = [k for k in ("embeds_normal", "embeds_position") if k not in cached_condition]
+            if missing:
+                raise RuntimeError(
+                    f"lightgen: {missing} missing while PBR conditions are present. Channel "
+                    f"offsets assume the full stack [noisy 0-3 | normal 4-7 | position 8-11 | "
+                    f"albedo 12-15 | mr 16-19]; dropping a geometry condition would shift the "
+                    f"PBR latents onto pretrained geometry channels. Zero the tensor to drop a "
+                    f"condition, do not remove the key."
+                )
+
         sample = [sample]
         if "embeds_normal" in cached_condition:
             sample.append(cached_condition["embeds_normal"].unsqueeze(1).repeat(1, N_pbr, 1, 1, 1, 1))

@@ -10,11 +10,15 @@ What this proves (each one is an `assert`, not a print):
   3. `train.py`'s conv_in expansion block (copied verbatim below) widens 12 -> 20 channels.
   4. The inherited `set_learned_parameters` freeze recipe holds: conv_in trainable,
      `unet_dual` fully frozen, `learned_text_clip_emission` trainable.
-  5. One `training_step` forward+backward produces a finite loss AND a nonzero gradient in
+  5. The frozen-unreachable set is exactly the expected 74,525,056 elements.
+  6. Both channel-layout guards trip when a condition key is removed (conv_in offsets are
+     positional, so a missing condition would otherwise silently shift the PBR latents onto
+     pretrained geometry channels).
+  7. One `training_step` forward+backward produces a finite loss AND a nonzero gradient in
      `conv_in.weight.grad[:, 12:20]` -- i.e. the albedo/mr conditioning channels are actually
-     wired to the loss.
-  6. The conditioning-dropout branch runs.
-  7. One `validation_step` completes the sampling loop and the VAE decode.
+     wired to the loss -- and every trainable parameter receives a gradient.
+  8. The conditioning-dropout branch runs.
+  9. One `validation_step` completes the sampling loop and the VAE decode.
 
 Run (from the repo root, `Hunyuan3DPaint-emissive/`):
 
@@ -164,12 +168,47 @@ def main():
     assert not dual_trainable, f"unet_dual must be fully frozen, but {len(dual_trainable)} params are trainable"
     assert emission_token == ["unet.learned_text_clip_emission"], f"unexpected emission token params: {emission_token}"
     assert not unreachable_trainable, f"unreachable params still trainable: {unreachable_trainable[:5]}"
-    assert model.num_frozen_unreachable_params > 0, "froze nothing -- the naming assumption broke"
+
+    # Pin the frozen set exactly, not just "> 0": these counts are a property of the pretrained
+    # checkpoint's architecture, so any drift means the material-slot retargeting changed shape.
+    mr_tensors = sum(1 for n, _ in named if "_mr" in n)
+    mr_elems = sum(p.numel() for n, p in named if "_mr" in n)
+    albedo_token_elems = sum(p.numel() for n, p in named if n.endswith("learned_text_clip_albedo"))
+    print(
+        f"frozen breakdown: {mr_tensors} *_mr* tensors / {mr_elems:,} elements "
+        f"+ learned_text_clip_albedo / {albedo_token_elems:,} elements"
+    )
+    assert (mr_tensors, mr_elems) == (129, 74_446_208), (mr_tensors, mr_elems)
+    assert albedo_token_elems == 78_848, albedo_token_elems
+    assert model.num_frozen_unreachable_params == 74_525_056, model.num_frozen_unreachable_params
 
     total = sum(p.numel() for p in model.unet.parameters())
     trainable = sum(p.numel() for p in model.unet.parameters() if p.requires_grad)
     print(f"unet params: total={total:,}  trainable={trainable:,}  ({100.0 * trainable / total:.1f}%)")
     assert 0 < trainable < total, "freeze recipe did not freeze anything"
+
+    # -------------------------- 4b. negative check: the channel-layout guards
+    # conv_in offsets are positional, so a missing condition would shift the PBR latents onto
+    # pretrained geometry channels without any shape error. Prove both guards actually trip.
+    dummy = torch.zeros(1, 1, 1, 4, 8, 8)
+    complete = {k: dummy for k in ("embeds_normal", "embeds_position", "embeds_albedo", "embeds_mr")}
+    for dropped in ("embeds_normal", "embeds_position", "embeds_albedo"):
+        incomplete = {k: v for k, v in complete.items() if k != dropped}
+        try:
+            type(model)._assert_condition_channel_layout(incomplete)
+        except RuntimeError as exc:
+            assert dropped in str(exc), f"guard fired but did not name {dropped}: {exc}"
+        else:
+            raise AssertionError(f"model-level guard did not trip with {dropped} removed")
+        try:
+            model.unet(dummy, 0, None, **incomplete)
+        except RuntimeError as exc:
+            assert dropped in str(exc), f"unet guard fired but did not name {dropped}: {exc}"
+        else:
+            raise AssertionError(f"modules.py guard did not trip with {dropped} removed")
+        print(f"  both guards trip with {dropped} removed")
+    type(model)._assert_condition_channel_layout(complete)  # the full stack must still pass
+    print("channel-layout guards: OK")
 
     # ------------------------------------------------------------- 5. one batch
     ds_cfg = config.data.params.train[0]

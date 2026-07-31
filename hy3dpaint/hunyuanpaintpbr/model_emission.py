@@ -15,10 +15,11 @@ Three mechanics in here are non-obvious and are the reason this file exists at a
    `model_index.json` declares the unet component as `["modules", "UNet2p5DConditionModel"]`,
    which makes diffusers load `<snapshot>/unet/modules.py` as a dynamic module
    (`diffusers_modules.local.modules`). That bundled copy has no knowledge of the
-   `embeds_albedo` / `embeds_mr` concat this design depends on. So after the pipeline
-   loads we throw that unet away and rebuild it from THIS package's
-   `UNet2p5DConditionModel.from_pretrained` (same weights, same strict 12-channel load) --
-   see `_swap_in_fork_unet`. Nothing downstream works without this.
+   `embeds_albedo` / `embeds_mr` concat this design depends on, so it would build a
+   12-channel input stack and hand it to the 20-channel conv_in -- a loud shape error on
+   the first step, not a silent wrong-answer. So after the pipeline loads we throw that unet
+   away and rebuild it from THIS package's `UNet2p5DConditionModel.from_pretrained` (same
+   weights, same strict 12-channel load) -- see `_swap_in_fork_unet`.
 
 2. ONE MATERIAL SLOT. Upstream runs two generation slots (albedo, mr) through every
    attention block. Emission needs exactly one. `_retarget_material_slots` sets N_pbr=1
@@ -90,8 +91,20 @@ class HunyuanPaintEmission(HunyuanPaint):
         self.num_frozen_unreachable_params = self._freeze_unreachable_parameters()
 
         # A full 512^2 / 6-view / batch-1 step does not fit in 24 GB without this (measured:
-        # OOM without, 17.4 GiB peak with, on an RTX 4090). Only the main unet needs it --
-        # unet_dual is entirely frozen, so its reference pass builds no autograd graph.
+        # OOM without, 17.4 GiB peak with, on an RTX 4090).
+        #
+        # This checkpoints the MAIN unet only. Note that `unet_dual`'s reference pass is NOT
+        # graph-free, despite every `unet_dual.*` parameter being frozen: its
+        # `encoder_hidden_states_ref` is `learned_text_clip_ref`, which the inherited
+        # `set_learned_parameters` leaves trainable (the name contains neither "attn1" nor
+        # "unet_dual"). That one leaf makes the dual pass require grad, so its activations are
+        # retained. The smoke test's "no trainable parameter is gradient-less" assertion is the
+        # direct evidence -- `learned_text_clip_ref` does receive a gradient.
+        #
+        # Two further levers exist if the reference pass ever needs to be cheaper, neither
+        # applied here (venus has the headroom, and both change what trains):
+        #   * `self.unet.unet_dual.enable_gradient_checkpointing()` -- keeps the token trainable;
+        #   * freezing `learned_text_clip_ref` -- then the dual pass really is graph-free.
         if gradient_checkpointing:
             self.unet.unet.enable_gradient_checkpointing()
 
@@ -139,7 +152,8 @@ class HunyuanPaintEmission(HunyuanPaint):
             raise RuntimeError(
                 f"unet class swap did not take: pipe.unet comes from {actual!r}, expected a "
                 f"module under {__package__!r}. The embeds_albedo/embeds_mr concat lives in this "
-                f"package's unet/modules.py and would silently not run."
+                f"package's unet/modules.py; without it the input stack is 12 channels wide and "
+                f"the 20-channel conv_in raises on the first forward."
             )
 
     def _add_emission_token(self):
@@ -247,7 +261,32 @@ class HunyuanPaintEmission(HunyuanPaint):
             cached["dino_hidden_states"] = self.dino_v2(cond_imgs[:, :1, ...])
         cached["mva_scale"] = 1.0
         cached["ref_scale"] = 1.0
+        self._assert_condition_channel_layout(cached)
         return target_imgs, cached
+
+    @staticmethod
+    def _assert_condition_channel_layout(cached):
+        """Fail loudly if the conv_in channel stack would come out mis-aligned.
+
+        Each condition's conv_in channel offset is nothing but its position in the concat
+        inside `UNet2p5DConditionModel.forward`, so an absent key does not remove a condition --
+        it slides every later one down four channels. Dropping albedo would feed mr into the
+        channels the model learned as albedo; dropping a geometry map would feed albedo into
+        pretrained normal/position channels. Neither raises on its own: the widths still work
+        out if the conv_in was expanded to match.
+
+        `modules.py` carries the same check (it is the code that owns the offsets, and the
+        pipeline can reach it without passing through here). This one fires earlier, with the
+        conditioning still in hand. A raise rather than `assert` so `python -O` cannot drop it.
+        """
+        expected = ("embeds_normal", "embeds_position", "embeds_albedo", "embeds_mr")
+        missing = [key for key in expected if key not in cached]
+        if missing:
+            raise RuntimeError(
+                f"conditioning is missing {missing}; conv_in expects the full positional stack "
+                f"[noisy 0-3 | normal 4-7 | position 8-11 | albedo 12-15 | mr 16-19]. To drop a "
+                f"condition (e.g. for guidance) zero its tensor -- never remove the key."
+            )
 
     def _apply_condition_dropout(self, cached, B):
         """Upstream's classifier-free-guidance dropout recipe, extended to albedo/mr.
@@ -308,7 +347,9 @@ class HunyuanPaintEmission(HunyuanPaint):
         v_pred = rearrange(v_pred, "(b p n) c h w -> b p n c h w", p=1, n=N)[:, 0]
         v_target = rearrange(self.get_v(flat, noise, t_flat), "(b n) c h w -> b n c h w", b=B)
 
-        loss = torch.nn.functional.mse_loss(v_pred, v_target.to(v_pred.dtype))
+        # fp32 loss: under bf16 autocast `v_pred` comes back bf16, and rounding the fp32 target
+        # down to match it would quantise the regression target itself.
+        loss = torch.nn.functional.mse_loss(v_pred.float(), v_target.float())
         self.log_dict({"train/emission_loss": loss}, prog_bar=True, logger=True, on_step=True, on_epoch=True)
         self.log("global_step", self.global_step, prog_bar=True, logger=True, on_step=True, on_epoch=False)
         if getattr(self, "_trainer", None) is not None:

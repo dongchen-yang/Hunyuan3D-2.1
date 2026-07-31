@@ -72,7 +72,14 @@ class DataModuleFromConfig(pl.LightningDataModule):
     def val_dataloader(self):
         datasets = ConcatDataset(self.datasets["validation"])
         sampler = DistributedSampler(datasets)
-        return DataLoader(datasets, batch_size=4, num_workers=self.num_workers, shuffle=False, sampler=sampler)
+        # lightgen divergence from upstream: this was a hardcoded batch_size=4, which made
+        # validation four times heavier than training regardless of the configured batch size --
+        # for the emission model that is 24 views of 512^2 through the unet and the VAE, well
+        # past what any train-step VRAM measurement covers. Honour the configured batch size
+        # instead. Only affects configs that relied on the hardcoded 4; none of ours do.
+        return DataLoader(
+            datasets, batch_size=self.batch_size, num_workers=self.num_workers, shuffle=False, sampler=sampler
+        )
 
     def test_dataloader(self):
         datasets = ConcatDataset(self.datasets["test"])
