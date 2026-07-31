@@ -8,6 +8,7 @@ Can be run as:
 import os
 import sys
 import torch
+import pytest
 
 # Add parent directory to path for imports
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
@@ -15,15 +16,19 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
 from src.data.dataloader.lightgen_emission_loader import LightgenEmissionDataset
 
 
-FIXTURE_ROOT = "/cs/3dlg-jupiter-project/lightgen/uv_voxel_pipeline/out_multiview_pilot10"
-EXAMPLES_JSON = os.path.join(os.path.dirname(__file__), "pilot10_local.json")
+FIXTURE_ROOT = os.environ.get(
+    "LIGHTGEN_FIXTURE_ROOT",
+    "/cs/3dlg-jupiter-project/lightgen/uv_voxel_pipeline/out_multiview_pilot10"
+)
+# Support override for testing skip path via env var; default to local JSON
+_DEFAULT_JSON = os.path.join(os.path.dirname(__file__), "pilot10_local.json")
+EXAMPLES_JSON = os.environ.get("LIGHTGEN_EXAMPLES_JSON", _DEFAULT_JSON)
 
 
 def test_lightgen_emission_dataset_shapes():
     """Test that LightgenEmissionDataset produces correct shapes and dtypes."""
     if not os.path.exists(EXAMPLES_JSON):
-        print(f"SKIP: Fixture {EXAMPLES_JSON} not available")
-        return
+        pytest.skip(f"fixture root absent: {EXAMPLES_JSON}")
 
     d = LightgenEmissionDataset(EXAMPLES_JSON, num_view=6, image_size=512)
 

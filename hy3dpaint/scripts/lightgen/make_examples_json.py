@@ -16,19 +16,22 @@ def main():
     parser.add_argument("--out", type=str, required=True, help="Output JSON file path")
     args = parser.parse_args()
 
+    # Apply abspath to fixture_root so output paths are always absolute
+    fixture_root = os.path.abspath(args.fixture_root)
+
     # List all subdirectories and sort them (exclude those starting with _)
     try:
         dirs = sorted([
-            os.path.join(args.fixture_root, d)
-            for d in os.listdir(args.fixture_root)
-            if os.path.isdir(os.path.join(args.fixture_root, d)) and not d.startswith('_')
+            os.path.join(fixture_root, d)
+            for d in os.listdir(fixture_root)
+            if os.path.isdir(os.path.join(fixture_root, d)) and not d.startswith('_')
         ])
     except Exception as e:
         print(f"Error reading fixture_root: {e}", file=sys.stderr)
         sys.exit(1)
 
     if not dirs:
-        print(f"Warning: No subdirectories found in {args.fixture_root}", file=sys.stderr)
+        print(f"Warning: No subdirectories found in {fixture_root}", file=sys.stderr)
 
     # Write JSON list of absolute paths
     out_dir = os.path.dirname(args.out)

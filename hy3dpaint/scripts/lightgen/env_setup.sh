@@ -112,10 +112,18 @@ conda run -n hunyuanpaint bash -c \
     2>&1 | tee "log/${TS}-hunyuanpaint-env.log"
 
 # ---------------------------------------------------------------------------
-# Step 4: smoke test -- strict-load the pretrained paint-pbr snapshot through the
+# Step 4: install pytest.
+# Needed for submodule tests (hy3dpaint/scripts/lightgen/test_*.py) to run under
+# pytest rather than standalone, enabling proper skip semantics and pytest fixture support.
+conda run -n hunyuanpaint bash -c \
+    'pip install pytest' \
+    2>&1 | tee "log/${TS}-hunyuanpaint-pytest.log"
+
+# ---------------------------------------------------------------------------
+# Step 5: smoke test -- strict-load the pretrained paint-pbr snapshot through the
 # custom pipeline. Downloads a multi-GB HF snapshot on first run; let it finish.
 conda run -n hunyuanpaint bash -c \
     'export PYTHONNOUSERSITE=1; python hy3dpaint/scripts/lightgen/smoke_load_pretrained.py' \
     2>&1 | tee "log/${TS}-hunyuanpaint-smoke.log"
 
-echo "Done. See log/${TS}-hunyuanpaint-{torch,env,smoke}.log for the full record."
+echo "Done. See log/${TS}-hunyuanpaint-{torch,env,pytest,smoke}.log for the full record."
