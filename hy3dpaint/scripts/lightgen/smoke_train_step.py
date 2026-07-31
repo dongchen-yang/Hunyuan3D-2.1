@@ -5,7 +5,8 @@ What this proves (each one is an `assert`, not a print):
   1. `cfgs/lightgen-emission-overfit10.yaml` instantiates through `instantiate_from_config`.
   2. The unet running inside the pipeline is THIS fork's `UNet2p5DConditionModel`, not the
      `diffusers_modules.local` class diffusers loads from the snapshot's own bundled
-     `unet/modules.py`. Without the swap the embeds_albedo/embeds_mr concat silently no-ops
+     `unet/modules.py`. Without the swap the 20-channel concat fails loudly (12-ch stack
+    into the 20-ch conv_in raises a shape error)
      and the new conv_in channels would never see data -- so this is the load-bearing check.
   3. `train.py`'s conv_in expansion block (copied verbatim below) widens 12 -> 20 channels.
   4. The inherited `set_learned_parameters` freeze recipe holds: conv_in trainable,
