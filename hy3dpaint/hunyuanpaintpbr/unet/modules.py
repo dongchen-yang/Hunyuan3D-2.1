@@ -967,6 +967,15 @@ class UNet2p5DConditionModel(torch.nn.Module):
             sample.append(cached_condition["embeds_normal"].unsqueeze(1).repeat(1, N_pbr, 1, 1, 1, 1))
         if "embeds_position" in cached_condition:
             sample.append(cached_condition["embeds_position"].unsqueeze(1).repeat(1, N_pbr, 1, 1, 1, 1))
+        # lightgen: PBR latents enter the SAME channel-concat path as the geometry conditions.
+        # Order is load-bearing: the pretrained conv_in owns channels [noisy 4 | normal 4 |
+        # position 4]; the lightgen conv_in expansion (12 -> 20) zero-inits channels 12-15 for
+        # albedo and 16-19 for mr, so albedo must append first and mr second, both after position.
+        # Both branches are no-ops for every upstream caller (neither key is ever set upstream).
+        if "embeds_albedo" in cached_condition:
+            sample.append(cached_condition["embeds_albedo"].unsqueeze(1).repeat(1, N_pbr, 1, 1, 1, 1))
+        if "embeds_mr" in cached_condition:
+            sample.append(cached_condition["embeds_mr"].unsqueeze(1).repeat(1, N_pbr, 1, 1, 1, 1))
         sample = torch.cat(sample, dim=-3)
 
         sample = rearrange(sample, "b n_pbr n c h w -> (b n_pbr n) c h w")
