@@ -1,0 +1,102 @@
+# lightgen: pbr->emission multiview fine-tune on the full v2-campaign 74k split.
+#
+# Scaled up from cfgs/lightgen-emission-overfit10.yaml (10-shape pilot, verified on
+# cs-venus-05 2026-08-03). Everything model-side is identical to the pilot; what changes is
+# the data (71,646 train shapes instead of 10), the batch/accumulation shape, and the run
+# length. Launch with scripts/lightgen/train_74k.sbatch -- do not run it by hand without
+# exporting LIGHTGEN_RUN_TS (see train.py's logdir comment).
+#
+# Global batch = batch_size 2 x 2 GPUs x accumulate_grad_batches 2 = 8 shapes = 48 views/step.
+# Over 50,000 steps that is 400k shape-visits (~5.6 epochs of the 71.6k train split).
+#
+# Paths below are cs-venus-05's, by design (no templating) -- same convention as the pilot
+# config. The train/val example JSONs they point at are generated on the node by Task 4 of the
+# phase-2 plan (rsync the renders, then make_examples_json.py / make_val_subset.py); they are
+# not committed because they are ~71.6k absolute machine-specific paths.
+
+model:
+  # Inherited from the pilot / EmissionGen anchor: 5e-5 with Hunyuan's own inherited schedule
+  # (train.py prints "NOT USING LR SCALING", so this is the literal optimiser LR and the larger
+  # global batch does NOT scale it). Deliberately unchanged from the pilot so that the 50k run
+  # differs from the verified overfit run in data and duration only.
+  base_learning_rate: 5.0e-05
+  target: hunyuanpaintpbr.model_emission.HunyuanPaintEmission
+  params:
+    num_view: 6
+    view_size: 512
+    drop_cond_prob: 0.1
+    val_num_inference_steps: 30
+
+    # MEASURED 2026-08-03 on cs-venus-05 (RTX Pro 6000 Blackwell Max-Q, 96 GB): training peak
+    # with checkpointing ON is 33.0 GiB at batch_size 1. Left on at batch_size 2 -- see the
+    # task-3 DDP smoke for the measured bs2 peak. It is not the bottleneck on a 96 GB card, and
+    # keeping it on keeps this run comparable to the pilot.
+    gradient_checkpointing: true
+
+    # 4 noisy emission + 4 normal + 4 position + 4 albedo + 4 mr.
+    # train.py expands conv_in from the pretrained 12 to this, zero-initialising channels 12-19
+    # (albedo 12-15, mr 16-19) to match the append order in hunyuanpaintpbr/unet/modules.py.
+    noise_in_channels: 20
+
+    stable_diffusion_config:
+      # venus (staged 2026-07-30 on cs-venus-05, HF_HOME=/localscratch/dya78/lightgen_mvpaint/hf_home):
+      pretrained_model_name_or_path: /localscratch/dya78/lightgen_mvpaint/hf_home/hub/models--tencent--Hunyuan3D-2.1/snapshots/0b94677654c57bb9a6b6845cd7b704ccf551d327/hunyuan3d-paintpbr-v2-1
+      custom_pipeline: ./hunyuanpaintpbr
+
+data:
+  target: src.data.objaverse_hunyuan.DataModuleFromConfig
+  params:
+    # Per-GPU. Two GPUs x accumulate_grad_batches 2 -> global batch 8.
+    batch_size: 2
+    # Per DDP rank: 2 ranks x 6 workers = 12 loader processes, inside the sbatch's
+    # --cpus-per-task=16 (leaves headroom for the two main processes).
+    num_workers: 6
+    train:
+      -
+        target: src.data.dataloader.lightgen_emission_loader.LightgenEmissionDataset
+        params:
+          num_view: 6
+          # Generated on the node by Task 4: the v2 train split (71,646 shapes, minus any that
+          # failed to render) as absolute paths under the staged render root.
+          json_path: /localscratch/dya78/lightgen_mvpaint/mv74k_train.json
+    validation:
+      -
+        target: src.data.dataloader.lightgen_emission_loader.LightgenEmissionDataset
+        params:
+          num_view: 6
+          # Generated on the node by Task 4 from scripts/lightgen/val64_v2_shas.txt -- 64 of the
+          # 387 v2 val shapes, hash-sorted (see scripts/lightgen/make_val_subset.py for why a
+          # subset and why hash-sorted). Full-387 validation at 30 sampling steps a shape would
+          # cost more wall time than it buys.
+          json_path: /localscratch/dya78/lightgen_mvpaint/mv74k_val64.json
+
+lightning:
+  modelcheckpoint:
+    params:
+      every_n_train_steps: 2500
+      # Keep the 3 best by sampled-emission quality plus last.ckpt for resume. NOTE the metric
+      # is logged in validation_step (model_emission.py) and is a *pixel* MSE of the fully
+      # sampled views vs GT -- not the v-prediction training loss.
+      save_top_k: 3
+      monitor: 'val/emission_mse'
+      mode: min
+      save_last: true
+  callbacks: {}
+
+  trainer:
+    benchmark: true
+    max_steps: 50000
+    gradient_clip_val: 1.0
+    # Global batch 8 = 2 (per-GPU) x 2 (GPUs) x 2 (accumulation).
+    accumulate_grad_batches: 2
+    # NOTE: pytorch-lightning counts val_check_interval in *training batches*, while max_steps
+    # and every_n_train_steps count *optimiser steps* -- with accumulate_grad_batches 2 this
+    # means validation runs every 1,250 optimiser steps, i.e. 40 times over the 50k run. Left as
+    # the half-interval it is rather than doubled to 5000: ModelCheckpoint's on_train_batch_end
+    # hook fires *before* the validation loop of the same batch, so a validation cadence that
+    # merely matched the checkpoint cadence would hand each checkpoint a metric one full
+    # interval stale (and the very first checkpoint none at all).
+    val_check_interval: 2500
+    num_sanity_val_steps: 0
+    check_val_every_n_epoch: null   # if not set, validation does not run
+    # `devices` is not set here: train.py overwrites it from --gpus (0,1 -> 2).
