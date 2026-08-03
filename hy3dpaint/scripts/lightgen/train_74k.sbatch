@@ -28,8 +28,11 @@ set -euo pipefail
 # BEFORE this script can run mkdir, so the parent dir must always exist at submission time.
 #
 # One Slurm task, two GPUs: pytorch-lightning's DDP strategy spawns the second rank itself
-# (--gpus 0,1 -> devices=2). Do NOT set --ntasks-per-node=2; that would start two independent
-# trainers, each of which would then try to spawn its own second rank.
+# (--gpus 0,1 -> devices=2), and --cpus-per-task=16 therefore has to cover both ranks and all
+# their dataloader workers. Do NOT set --ntasks-per-node=2 to "fix" DDP: that would start two
+# independent trainers, each of which would then try to spawn its own second rank. train.py
+# pins LightningEnvironment for exactly this launch shape -- without it lightning 1.9 reads the
+# world size out of SLURM_NTASKS (=1) and trains on one rank while holding both GPUs.
 source /localscratch/dya78/miniconda3/etc/profile.d/conda.sh
 conda activate hunyuanpaint
 cd /localscratch/dya78/lightgen_mvpaint/Hunyuan3D-2.1-emissive

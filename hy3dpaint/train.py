@@ -22,6 +22,7 @@ from omegaconf import OmegaConf
 from pytorch_lightning import seed_everything
 from pytorch_lightning.trainer import Trainer
 from pytorch_lightning.strategies import DDPStrategy
+from pytorch_lightning.plugins.environments import LightningEnvironment, SLURMEnvironment
 from pytorch_lightning.callbacks import Callback
 from pytorch_lightning.utilities import rank_zero_only, rank_zero_warn
 
@@ -395,7 +396,28 @@ if __name__ == "__main__":
     ddp_find_unused = os.environ.get("LIGHTGEN_DDP_FIND_UNUSED", "0") == "1"
     if ddp_find_unused:
         rank_zero_print("++++ DDP find_unused_parameters=True (LIGHTGEN_DDP_FIND_UNUSED=1) ++++")
-    trainer_kwargs["strategy"] = DDPStrategy(find_unused_parameters=ddp_find_unused)
+
+    ddp_kwargs = {"find_unused_parameters": ddp_find_unused}
+    # LightGen: inside an sbatch, lightning 1.9 auto-detects SLURMEnvironment (any job whose name
+    # is not "bash"/"interactive") and then takes the world size from SLURM_NTASKS *regardless of
+    # --gpus*, assuming the ranks were launched by `srun`. Our launch scripts are one Slurm task
+    # + lightning's own subprocess launcher (star2 policy), so SLURM_NTASKS is 1 and a `--gpus
+    # 0,1` run silently trains on ONE rank while holding two GPUs -- observed on cs-venus-05,
+    # job 238262: "Initializing distributed: GLOBAL_RANK: 0, MEMBER: 1/1". Pinning
+    # LightningEnvironment restores the subprocess launcher (creates_processes_externally is
+    # False there, so DDPStrategy spawns the missing ranks itself).
+    #
+    # Only when Slurm has fewer tasks than we asked for GPUs -- so a genuine multi-node
+    # `srun --ntasks=<gpus> python train.py` still gets the SLURM environment and its rank
+    # assignment, unchanged.
+    slurm_ntasks = int(os.environ.get("SLURM_NTASKS", "1"))
+    if ngpu > 1 and SLURMEnvironment.detect() and slurm_ntasks < ngpu * opt.num_nodes:
+        rank_zero_print(
+            f"++++ SLURM_NTASKS={slurm_ntasks} < requested ranks ({ngpu * opt.num_nodes}); "
+            "using LightningEnvironment so DDP spawns its own ranks ++++"
+        )
+        ddp_kwargs["cluster_environment"] = LightningEnvironment()
+    trainer_kwargs["strategy"] = DDPStrategy(**ddp_kwargs)
 
     # trainer
     trainer = Trainer(**trainer_config, **trainer_kwargs, num_nodes=opt.num_nodes, inference_mode=False)
