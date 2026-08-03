@@ -71,7 +71,9 @@ class DataModuleFromConfig(pl.LightningDataModule):
 
     def val_dataloader(self):
         datasets = ConcatDataset(self.datasets["validation"])
-        sampler = DistributedSampler(datasets)
+        # lightgen: shuffle=False so validation order is stable across epochs
+        # (upstream's default per-epoch shuffle permutes val-grid panels between steps).
+        sampler = DistributedSampler(datasets, shuffle=False)
         # lightgen divergence from upstream: this was a hardcoded batch_size=4, which made
         # validation four times heavier than training regardless of the configured batch size --
         # for the emission model that is 24 views of 512^2 through the unet and the VAE, well
