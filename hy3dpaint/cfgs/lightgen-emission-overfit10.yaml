@@ -1,8 +1,8 @@
 # lightgen: pbr->emission multiview overfit on the 10-shape pilot fixture.
 #
-# Paths below are absolute/machine-specific by design (no templating). The active values are
-# the local workstation's; the `# venus:` line under each records the value to swap in when
-# this config is staged on venus.
+# Paths below are absolute/machine-specific by design (no templating). As of Task 8
+# (2026-07-30) the active values are venus's (cs-venus-05, verified there); the local-workstation
+# equivalents are recorded in comments for reference when iterating on the RTX 4090 instead.
 #
 # Run from hy3dpaint/ (relative paths here resolve against that cwd):
 #   conda run -n hunyuanpaint bash -c \
@@ -38,12 +38,10 @@ model:
     noise_in_channels: 20
 
     stable_diffusion_config:
-      pretrained_model_name_or_path: /localhome/dya78/.cache/huggingface/hub/models--tencent--Hunyuan3D-2.1/snapshots/0b94677654c57bb9a6b6845cd7b704ccf551d327/hunyuan3d-paintpbr-v2-1
-      # venus: point at the snapshot staged on venus, i.e. the directory printed as SNAPSHOT= by
-      # venus: scripts/lightgen/smoke_load_pretrained.py when run there (its parent is
-      # venus: $HF_HOME/hub/models--tencent--Hunyuan3D-2.1/snapshots/<sha>/). Must be the
-      # venus: `.../hunyuan3d-paintpbr-v2-1` subdirectory, and must contain unet/config.json +
-      # venus: unet/diffusion_pytorch_model.bin -- HunyuanPaintEmission rebuilds the unet from it.
+      # venus (active, staged 2026-07-30 on cs-venus-05, HF_HOME=/localscratch/dya78/lightgen_mvpaint/hf_home):
+      pretrained_model_name_or_path: /localscratch/dya78/lightgen_mvpaint/hf_home/hub/models--tencent--Hunyuan3D-2.1/snapshots/0b94677654c57bb9a6b6845cd7b704ccf551d327/hunyuan3d-paintpbr-v2-1
+      # local workstation value (RTX 4090), for reference when iterating there instead:
+      # local: /localhome/dya78/.cache/huggingface/hub/models--tencent--Hunyuan3D-2.1/snapshots/0b94677654c57bb9a6b6845cd7b704ccf551d327/hunyuan3d-paintpbr-v2-1
       custom_pipeline: ./hunyuanpaintpbr
 
 data:
@@ -56,17 +54,16 @@ data:
         target: src.data.dataloader.lightgen_emission_loader.LightgenEmissionDataset
         params:
           num_view: 6
-          json_path: scripts/lightgen/pilot10_local.json
-          # venus: regenerate with scripts/lightgen/make_examples_json.py against the venus copy
-          # venus: of out_multiview_pilot10/ and point json_path at the result -- the committed
-          # venus: pilot10_local.json holds /cs/3dlg-jupiter-project paths that venus cannot see.
+          json_path: scripts/lightgen/pilot10_venus.json
+          # local workstation value, for reference: scripts/lightgen/pilot10_local.json
+          # (holds /cs/3dlg-jupiter-project paths that venus cannot see).
     validation:
       -
         target: src.data.dataloader.lightgen_emission_loader.LightgenEmissionDataset
         params:
           num_view: 6
-          json_path: scripts/lightgen/pilot10_local.json
-          # venus: same substitution as the train entry above.
+          json_path: scripts/lightgen/pilot10_venus.json
+          # local workstation value, for reference: scripts/lightgen/pilot10_local.json
 
 lightning:
   modelcheckpoint:
