@@ -175,7 +175,15 @@ if __name__ == "__main__":
     cfg_fname = os.path.split(opt.base)[-1]
     cfg_name = os.path.splitext(cfg_fname)[0]
     exp_name = "-" + opt.name if opt.name != "" else ""
-    logdir = os.path.join(opt.logdir, cfg_name + exp_name)
+    # LightGen: optional per-submission run stamp appended to the logdir, so two runs of the same
+    # config do not share a logdir (and therefore do not silently auto-resume each other via the
+    # last.ckpt lookup just below). It comes from the environment -- NOT from datetime.now() here --
+    # because pytorch-lightning 1.9's DDP launcher re-execs train.py once per rank, so an
+    # in-process timestamp would differ between ranks and each rank would write its own logdir.
+    # The sbatch launcher exports LIGHTGEN_RUN_TS=${LIGHTGEN_RUN_TS:-$(date +%Y%m%d-%H%M%S)} once,
+    # before python, so every re-exec inherits the same value. Unset => upstream behaviour.
+    run_ts = os.environ.get("LIGHTGEN_RUN_TS", "")
+    logdir = os.path.join(opt.logdir, cfg_name + exp_name + ("-" + run_ts if run_ts else ""))
 
     # assert not os.path.exists(logdir) or 'test' in logdir, logdir
     if os.path.exists(logdir) and opt.resume is None:
@@ -377,7 +385,17 @@ if __name__ == "__main__":
     trainer_kwargs["callbacks"] = [instantiate_from_config(callbacks_cfg[k]) for k in callbacks_cfg]
 
     trainer_kwargs["precision"] = "bf16"
-    trainer_kwargs["strategy"] = DDPStrategy(find_unused_parameters=False)
+    # LightGen: upstream's find_unused_parameters=False is kept as the default -- it is the fast
+    # path, and the 2-GPU smoke on the emission model confirmed our freeze pattern (unet_dual
+    # frozen, learned_text_clip_ref trainable) does not leave parameters unused. The escape hatch
+    # exists because that is exactly the failure mode a freeze pattern can produce, and it shows
+    # up only under DDP: set LIGHTGEN_DDP_FIND_UNUSED=1 if a run dies with DDP's "expected to
+    # have finished reduction in the prior iteration" error. It costs a graph traversal per
+    # backward -- measure before leaving it on.
+    ddp_find_unused = os.environ.get("LIGHTGEN_DDP_FIND_UNUSED", "0") == "1"
+    if ddp_find_unused:
+        rank_zero_print("++++ DDP find_unused_parameters=True (LIGHTGEN_DDP_FIND_UNUSED=1) ++++")
+    trainer_kwargs["strategy"] = DDPStrategy(find_unused_parameters=ddp_find_unused)
 
     # trainer
     trainer = Trainer(**trainer_config, **trainer_kwargs, num_nodes=opt.num_nodes, inference_mode=False)
