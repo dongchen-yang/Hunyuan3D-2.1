@@ -1,0 +1,74 @@
+# lightgen: 2-GPU DDP smoke test for the 74k run.
+#
+# Byte-for-byte the same model/trainer setup as cfgs/lightgen-emission-74k.yaml, with two
+# things swapped so it finishes in minutes: the data is the already-staged 10-shape pilot
+# fixture (train == validation, as in the overfit config), and the schedule is 60 steps /
+# validate every 40 batches / checkpoint every 40 steps instead of 50k / 2500 / 2500.
+#
+# What it is there to prove, before 6.5 days of GPU time are committed:
+#   1. both ranks initialise and train (DDP world_size 2) with the attn_processor cuda:0 fix;
+#   2. find_unused_parameters=False survives our freeze pattern (unet_dual frozen,
+#      learned_text_clip_ref trainable) -- if not, train.py honours LIGHTGEN_DDP_FIND_UNUSED=1;
+#   3. val/emission_mse is logged and reaches ModelCheckpoint's monitor;
+#   4. LIGHTGEN_RUN_TS isolates logdirs, so a resubmission starts from step 0 instead of
+#      silently auto-resuming the previous run's last.ckpt;
+#   5. measured bs2 VRAM and s/step, to sanity-check the 50k run's wall-clock budget.
+#
+# Launch: scripts/lightgen/ddp_smoke.sbatch
+
+model:
+  base_learning_rate: 5.0e-05
+  target: hunyuanpaintpbr.model_emission.HunyuanPaintEmission
+  params:
+    num_view: 6
+    view_size: 512
+    drop_cond_prob: 0.1
+    val_num_inference_steps: 30
+    gradient_checkpointing: true
+    noise_in_channels: 20
+    stable_diffusion_config:
+      pretrained_model_name_or_path: /localscratch/dya78/lightgen_mvpaint/hf_home/hub/models--tencent--Hunyuan3D-2.1/snapshots/0b94677654c57bb9a6b6845cd7b704ccf551d327/hunyuan3d-paintpbr-v2-1
+      custom_pipeline: ./hunyuanpaintpbr
+
+data:
+  target: src.data.objaverse_hunyuan.DataModuleFromConfig
+  params:
+    batch_size: 2
+    # 4 rather than the 74k config's 6: the pilot fixture is 10 shapes, so an epoch is ~3
+    # batches per rank and the run cycles through ~40 epochs -- fewer workers means less
+    # respawn churn, and the data is page-cached anyway. Loading is not what this measures.
+    num_workers: 4
+    train:
+      -
+        target: src.data.dataloader.lightgen_emission_loader.LightgenEmissionDataset
+        params:
+          num_view: 6
+          json_path: scripts/lightgen/pilot10_venus.json
+    validation:
+      -
+        target: src.data.dataloader.lightgen_emission_loader.LightgenEmissionDataset
+        params:
+          num_view: 6
+          json_path: scripts/lightgen/pilot10_venus.json
+
+lightning:
+  modelcheckpoint:
+    params:
+      every_n_train_steps: 40
+      save_top_k: 1
+      monitor: 'val/emission_mse'
+      mode: min
+      save_last: true
+  callbacks: {}
+
+  trainer:
+    benchmark: true
+    max_steps: 60
+    gradient_clip_val: 1.0
+    accumulate_grad_batches: 2
+    # In training *batches* (see the note in the 74k config): 40 batches = 20 optimiser steps,
+    # so validation lands at steps 20, 40 and 60 and the step-40 checkpoint has a monitored
+    # metric to select on -- the same ordering the 50k run will see.
+    val_check_interval: 40
+    num_sanity_val_steps: 0
+    check_val_every_n_epoch: null
