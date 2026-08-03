@@ -126,7 +126,7 @@ conda run -n hunyuanpaint bash -c \
 # not exercised by smoke_load_pretrained.py or smoke_train_step.py (neither touches the
 # Trainer/logger), so its absence would not surface until Task 9's actual training job.
 conda run -n hunyuanpaint bash -c \
-    'pip install wandb' \
+    'pip install wandb==0.28.1' \
     2>&1 | tee "log/${TS}-hunyuanpaint-wandb.log"
 
 # ---------------------------------------------------------------------------

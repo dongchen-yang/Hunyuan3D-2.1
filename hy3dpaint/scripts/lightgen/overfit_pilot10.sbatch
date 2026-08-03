@@ -19,9 +19,10 @@
 #SBATCH --mem=64G
 #SBATCH --time=12:00:00
 #SBATCH --job-name=mvpaint_overfit10
-#SBATCH --output=/localscratch/dya78/lightgen_mvpaint/log/%x-%j.out
+#SBATCH --output=/localscratch/dya78/lightgen_mvpaint/%x-%j.out
 set -euo pipefail
-mkdir -p /localscratch/dya78/lightgen_mvpaint/log
+# NOTE: --output must not point into a not-yet-created subdir; Slurm opens the output file
+# BEFORE this script can run mkdir, so the parent dir must always exist at submission time.
 source /localscratch/dya78/miniconda3/etc/profile.d/conda.sh
 conda activate hunyuanpaint
 cd /localscratch/dya78/lightgen_mvpaint/Hunyuan3D-2.1-emissive
@@ -33,5 +34,5 @@ export HF_HOME=/localscratch/dya78/lightgen_mvpaint/hf_home
 export WANDB_MODE=offline
 export LIGHTGEN_WANDB_NAME='mvpaint_pbr->emission_overfit10_v1'
 mkdir -p logs
-nvidia-smi --query-gpu=memory.used --format=csv -l 60 > ../vram-$SLURM_JOB_ID.log &
+nvidia-smi --query-gpu=memory.used --format=csv -l 60 > /localscratch/dya78/lightgen_mvpaint/vram-$SLURM_JOB_ID.log &
 python train.py --base cfgs/lightgen-emission-overfit10.yaml --name overfit10 --logdir logs/ --gpus 0,
