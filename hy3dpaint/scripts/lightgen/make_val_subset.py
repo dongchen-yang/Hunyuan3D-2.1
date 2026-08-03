@@ -74,6 +74,9 @@ def main():
         raise SystemExit("--fixture_root and --out_json must be given together")
 
     shas = read_shas(args.val_shas)
+    if args.n < 1:
+        # Without this, --n -1 would slice ordered[:-1] and quietly write all-but-one sha.
+        raise SystemExit(f"--n must be >= 1, got {args.n}")
     if args.n > len(shas):
         raise SystemExit(f"--n {args.n} exceeds the {len(shas)} shas in {args.val_shas}")
     subset = hash_sorted_subset(shas, args.n)

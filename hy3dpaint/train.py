@@ -407,13 +407,18 @@ if __name__ == "__main__":
     # LightningEnvironment restores the subprocess launcher (creates_processes_externally is
     # False there, so DDPStrategy spawns the missing ranks itself).
     #
-    # Only when Slurm has fewer tasks than we asked for GPUs -- so a genuine multi-node
-    # `srun --ntasks=<gpus> python train.py` still gets the SLURM environment and its rank
-    # assignment, unchanged.
+    # Single node only, and only when Slurm has fewer tasks than we asked for GPUs. Two launch
+    # shapes are deliberately left alone:
+    #   * a genuine `srun --ntasks=<ranks> python train.py` (SLURM_NTASKS already matches) keeps
+    #     the SLURM environment and its rank assignment;
+    #   * anything with --num_nodes > 1 keeps it too, because LightningEnvironment cannot replace
+    #     it there: its subprocess launcher only spawns *local* children and rendezvouses on
+    #     127.0.0.1, so a multi-node job would sit waiting for ranks that never appear. Multi-node
+    #     must be srun-launched with one task per rank.
     slurm_ntasks = int(os.environ.get("SLURM_NTASKS", "1"))
-    if ngpu > 1 and SLURMEnvironment.detect() and slurm_ntasks < ngpu * opt.num_nodes:
+    if ngpu > 1 and opt.num_nodes == 1 and SLURMEnvironment.detect() and slurm_ntasks < ngpu:
         rank_zero_print(
-            f"++++ SLURM_NTASKS={slurm_ntasks} < requested ranks ({ngpu * opt.num_nodes}); "
+            f"++++ SLURM_NTASKS={slurm_ntasks} < requested ranks ({ngpu}); "
             "using LightningEnvironment so DDP spawns its own ranks ++++"
         )
         ddp_kwargs["cluster_environment"] = LightningEnvironment()
