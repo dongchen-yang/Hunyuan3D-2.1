@@ -388,5 +388,24 @@ class HunyuanPaintEmission(HunyuanPaint):
         )[0]
         pred = (img * 0.5 + 0.5).clamp(0, 1)  # (B*N, 3, H, W)
         gt = rearrange(gt_emission.to(pred.device, pred.dtype), "b n c h w -> (b n) c h w")
+
+        # A monitorable scalar so ModelCheckpoint can select on sampling quality
+        # (monitor: 'val/emission_mse', mode: min). Note this is NOT the training objective --
+        # training regresses v in latent space, this is pixel MSE between the fully sampled
+        # emission views and the GT views, both in [0, 1]. fp32 for the same reason the training
+        # loss is fp32: under bf16 autocast `pred` comes back bf16. sync_dist=True averages the
+        # per-rank shards under DDP, so the monitored value is the same on every rank.
+        val_mse = torch.nn.functional.mse_loss(pred.float(), gt.float())
+        self.log(
+            "val/emission_mse",
+            val_mse,
+            prog_bar=True,
+            logger=True,
+            on_step=False,
+            on_epoch=True,
+            sync_dist=True,
+            batch_size=B,
+        )
+
         panel = torch.cat([gt, pred], dim=-2)
         self.validation_step_outputs.append(rearrange(panel, "(b n) c h w -> b c h (n w)", b=B))
