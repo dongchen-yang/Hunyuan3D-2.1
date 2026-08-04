@@ -20,7 +20,11 @@
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=16
 #SBATCH --mem=160G
-#SBATCH --time=6-12:00:00
+# 3 days for a run the task-3 DDP smoke measured at ~4.1 s/step -> ~57 h for 50,000 steps. That is
+# ~26% headroom, and a 3-day ask sits in a friendlier queue tier than the 6-day one it replaces.
+# If a resume is ever needed it starts from last.ckpt, so the wall clock only has to cover the
+# remaining steps, not the whole run.
+#SBATCH --time=3-00:00:00
 #SBATCH --job-name=mvpaint_74k
 #SBATCH --output=/localscratch/dya78/lightgen_mvpaint/%x-%j.out
 set -euo pipefail
