@@ -151,10 +151,13 @@ def main():
     if not os.path.isdir(root):
         fail(f"--fixture_root {root} is not a directory")
 
+    # ---- A0: every list entry is a bare sha (read_shas aborts otherwise) ------------------
     train = read_shas(args.train_shas)
     val = read_shas(args.val_shas)
     test = read_shas(args.test_shas)
     val64 = read_shas(args.val64_shas)
+    ok(f"A0 all {len(train) + len(val) + len(test) + len(val64)} list entries are bare 32-hex shas "
+       f"(no absolute path or '..' can escape {root})")
     train_s, val_s, test_s, val64_s = set(train), set(val), set(test), set(val64)
 
     # ---- A1: the pins themselves are sane -------------------------------------------------
