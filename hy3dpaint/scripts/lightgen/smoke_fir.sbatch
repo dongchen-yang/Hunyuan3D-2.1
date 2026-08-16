@@ -139,10 +139,18 @@ nvidia-smi --query-gpu=index,memory.used --format=csv -l 120 > "$ROOT/vram-alpha
 # killer actually acts on, so a repeat tells us WHEN and HOW MUCH rather than just "Killed".
 # cgroup v2 first, v1 as fallback; `memory.peak` exists on newer kernels and is the cheapest
 # high-water mark there is.
-( CG=/sys/fs/cgroup
+# The cgroup path must be DERIVED, not guessed. The first version of this sampler read
+# /sys/fs/cgroup/memory.current directly and logged 0 for the whole run: on cgroup v2 that
+# path is the ROOT cgroup, which a Slurm step cannot read. The step's own cgroup is the one
+# named in /proc/self/cgroup (v2 format: "0::/<relative path>"), so resolve it at startup.
+( CGROOT=/sys/fs/cgroup
+  REL=$(awk -F: '$1=="0"{print $3}' /proc/self/cgroup 2>/dev/null)
+  CG="$CGROOT$REL"
+  [ -r "$CG/memory.current" ] || CG=$CGROOT   # v1 or unreadable: fall back, log will show 0
+  echo "sampler: cgroup=$CG readable=$([ -r "$CG/memory.current" ] && echo yes || echo NO)"
   n=0
   while true; do
-      cur=$(cat $CG/memory.current 2>/dev/null || cat $CG/memory/memory.usage_in_bytes 2>/dev/null || echo 0)
+      cur=$(cat $CG/memory.current 2>/dev/null || cat $CGROOT/memory/memory.usage_in_bytes 2>/dev/null || echo 0)
       pk=$(cat $CG/memory.peak 2>/dev/null || echo 0)
       rss=$(awk '/^MemAvailable:/{print $2}' /proc/meminfo)
       echo "$(date +%H:%M:%S) cgroup_cur_GB=$((cur/1073741824)) cgroup_peak_GB=$((pk/1073741824)) host_avail_GB=$((rss/1048576))"

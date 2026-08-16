@@ -26,6 +26,14 @@
 # already reached exits within a few minutes without training -- harmless, but it is why
 # you should not queue many more segments than you need.
 #
+# DO NOT CHANGE THE CONFIG OR MODEL CODE WHILE A CHAIN IS IN FLIGHT.
+# Slurm spools the batch script at SUBMIT time, so editing the .sbatch cannot affect queued
+# segments -- but every segment runs `git pull --ff-only` when it starts, so a commit to
+# cfgs/ or hunyuanpaintpbr/ lands on segment N+1 and silently trains the rest of the campaign
+# under different settings than segment 1. If a config change is genuinely needed, cancel the
+# remaining segments, then start a NEW stamp rather than mixing two recipes into one
+# checkpoint lineage.
+#
 # Usage:
 #   bash scripts/lightgen/submit_chain_fir.sh [N_SEGMENTS]        # default 4
 #   bash scripts/lightgen/submit_chain_fir.sh 2 20260815-235959   # extend an EXISTING run
