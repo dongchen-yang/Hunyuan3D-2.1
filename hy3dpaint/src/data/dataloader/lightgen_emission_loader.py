@@ -26,14 +26,33 @@ class LightgenEmissionDataset(torch.utils.data.Dataset):
     """Fixed-6-view loader for lightgen multiview emission fixtures.
 
     Differences from upstream TextureDataset: no lighting-suffix logic, no random
-    view subsampling (views are the canonical 000-005), adds images_emission, and
-    the reference image is render_cond/000.png duplicated twice (upstream code
-    slices images_cond[:, 0:1] and [:, 1:2])."""
+    view subsampling (views are the canonical 000-005), adds images_emission and
+    images_alpha, and the reference image is render_cond/000.png duplicated twice
+    (upstream code slices images_cond[:, 0:1] and [:, 1:2]).
 
-    def __init__(self, json_path, num_view=6, image_size=512):
+    `images_alpha` is the per-texel glTF opacity map, added for conditioning parity
+    with the other LightGen baselines (TEXGen's 13ch variant, TRELLIS.2 and
+    SegviGen all condition on alpha). Its PNG stores the scalar replicated across
+    RGB, so it needs no special handling here -- it rides the same `_img` path as
+    every other map. A fixture rendered before the alpha map existed holds only 30
+    render_tex PNGs and will raise here rather than train without the condition;
+    upgrade it with `data_processing/multiview_render_pipeline/append_alpha_views.py`."""
+
+    # (batch key, PNG suffix). Order is documentation only -- the model reads by key -- but it
+    # matches the conv_in concat order in hunyuanpaintpbr/unet/modules.py, so keep it that way.
+    MAPS = [("albedo", "albedo"), ("mr", "mr"), ("alpha", "alpha"),
+            ("normal", "normal"), ("position", "pos"), ("emission", "emission")]
+
+    def __init__(self, json_path, num_view=6, image_size=512, use_alpha=True):
         with open(json_path) as f:
             self.dirs = json.load(f)
         self.num_view, self.image_size = num_view, image_size
+        # False only to reproduce the archived 20-channel run against a pre-alpha fixture; it
+        # must then be false on the model too (HunyuanPaintEmission.use_alpha) and
+        # noise_in_channels must be 20. The model cross-checks all three against the real
+        # conv_in width per batch, so a half-flipped combination raises rather than trains.
+        self.use_alpha = use_alpha
+        self.maps = [m for m in self.MAPS if use_alpha or m[0] != "alpha"]
 
     def __len__(self):
         return len(self.dirs)
@@ -43,13 +62,12 @@ class LightgenEmissionDataset(torch.utils.data.Dataset):
         return torch.from_numpy(np.asarray(im, np.float32) / 255.0).permute(2, 0, 1)
 
     def _load(self, i):
-        """Load one example. Raises if any of its 31 PNGs is missing or undecodable."""
+        """Load one example. Raises if any of its 37 PNGs is missing or undecodable."""
         d = self.dirs[i]
         views = range(self.num_view)
         out = {
             f"images_{k}": torch.stack([self._img(os.path.join(d, "render_tex", f"{v:03d}_{s}.png")) for v in views])
-            for k, s in [("albedo", "albedo"), ("mr", "mr"), ("normal", "normal"),
-                         ("position", "pos"), ("emission", "emission")]
+            for k, s in self.maps
         }
         ref = self._img(os.path.join(d, "render_cond", "000.png"))
         out["images_cond"] = torch.stack([ref, ref])

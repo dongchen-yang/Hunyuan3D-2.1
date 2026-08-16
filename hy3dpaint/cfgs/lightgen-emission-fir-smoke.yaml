@@ -1,0 +1,119 @@
+# lightgen: 4-GPU DDP SMOKE for the fir alpha run. Minutes, not days.
+#
+# Identical to cfgs/lightgen-emission-74k-alpha-fir.yaml in everything that could change the
+# answer -- same bs4, same 4 GPUs, same 24-channel conv_in, same LR -- with only the schedule
+# shortened and the data pointed at the 64-shape val subset for both train and validation
+# (the overfit-config pattern). A smoke that differs in batch size or channel count proves
+# nothing about the run it gates.
+#
+# WHAT IT MUST PROVE, before ~4 days of a full node are committed:
+#   1. all four ranks initialise under pytorch-lightning DDP on H100 (sm_90);
+#   2. MEASURED s/step and peak VRAM at bs4 -- currently extrapolated from a Blackwell
+#      measurement, and the entire segment-count arithmetic rests on them;
+#   3. the 24-channel conv_in actually assembles: images_alpha reaches the model, and both
+#      positional guards pass (model_emission._assert_condition_channel_layout now
+#      cross-checks the real conv_in.in_channels, so a config/flag mismatch raises here
+#      rather than silently training four dead input channels);
+#   4. the tar extract and make_74k_jsons.py's A7 gate work inside a real job;
+#   5. val/emission_mse is logged and reaches ModelCheckpoint's monitor;
+#   6. train/emission_loss FALLS at LR 7e-5 -- the one knob in this campaign that has never
+#      been run. If it rises or flatlines, fall back to 5e-5 (proven at global batch 8)
+#      rather than tuning further: a slightly small LR costs some sample efficiency, a
+#      slightly large one wrecks the fine-tune.
+#
+# Launch: sbatch scripts/lightgen/smoke_fir.sbatch   (3 h tier, 100 nodes -- starts fast)
+
+model:
+  base_learning_rate: 7.0e-05
+  target: hunyuanpaintpbr.model_emission.HunyuanPaintEmission
+  params:
+    num_view: 6
+    view_size: 512
+    drop_cond_prob: 0.1
+    val_num_inference_steps: 30
+    gradient_checkpointing: true
+
+    # 4 noisy emission + 4 normal + 4 position + 4 albedo + 4 mr + 4 alpha.
+    # train.py expands conv_in from the pretrained 12 to this, zero-initialising 12-23 to
+    # match the append order in hunyuanpaintpbr/unet/modules.py (_PBR_STACK).
+    use_alpha: true
+    noise_in_channels: 24
+
+    stable_diffusion_config:
+      # Path is deterministic, not copied by hand: scripts/lightgen/stage_fir.sh pins
+      # revision 0b94677654c57bb9a6b6845cd7b704ccf551d327 -- the same snapshot the venus env
+      # runs -- so HF_HOME/hub/models--<repo>/snapshots/<rev>/ resolves to exactly this.
+      # Pinning the revision is what makes fir and venus the same weights rather than
+      # "whatever main was on the day each was staged".
+      pretrained_model_name_or_path: /scratch/dya78/lightgen_mvpaint/hf_home/hub/models--tencent--Hunyuan3D-2.1/snapshots/0b94677654c57bb9a6b6845cd7b704ccf551d327/hunyuan3d-paintpbr-v2-1
+      custom_pipeline: ./hunyuanpaintpbr
+
+data:
+  target: src.data.objaverse_hunyuan.DataModuleFromConfig
+  params:
+    # Per GPU. 4 GPUs x accumulate_grad_batches 1 -> global batch 16.
+    batch_size: 4
+    # 48 CPUs / 4 DDP ranks = 12 per rank; 10 loader workers leaves 2 for the rank's own
+    # process. Each worker now decodes 38 PNGs per example (37 read + the ref copy), up from
+    # 31 before alpha, so this is the knob if the GPUs turn out to be starved.
+    num_workers: 10
+    train:
+      -
+        target: src.data.dataloader.lightgen_emission_loader.LightgenEmissionDataset
+        params:
+          num_view: 6
+          use_alpha: true
+          # Regenerated INSIDE the job by make_74k_jsons.py, because $SLURM_TMPDIR changes
+          # every run. Its A7 gate (36 render_tex PNGs per listed dir) is also what proves
+          # the tar extract landed whole -- so the JSON build is a data check, not plumbing.
+          json_path: /scratch/dya78/lightgen_mvpaint/mv74k_val64.json
+    validation:
+      -
+        target: src.data.dataloader.lightgen_emission_loader.LightgenEmissionDataset
+        params:
+          num_view: 6
+          use_alpha: true
+          json_path: /scratch/dya78/lightgen_mvpaint/mv74k_val64.json
+
+lightning:
+  modelcheckpoint:
+    params:
+      # 1250, not 2500, because the campaign runs in 24-HOUR segments. Whatever has happened
+      # since the last `last.ckpt` write is lost when SLURM kills the job at the wall clock,
+      # so the checkpoint interval is a direct tax on every segment boundary: at ~5 s/step,
+      # 2500 risks ~3.5 h of a 24 h segment (15%), 1250 risks ~1.7 h (7%).
+      every_n_train_steps: 40
+      # save_last is what makes a requeue survivable: the resume path reads last.ckpt from
+      # the LIGHTGEN_RUN_TS-stamped logdir. save_top_k selects on sampled-emission quality,
+      # a pixel MSE of the fully sampled views vs GT -- not the v-prediction training loss.
+      save_top_k: 1
+      monitor: 'val/emission_mse'
+      mode: min
+      save_last: true
+  callbacks: {}
+
+  trainer:
+    benchmark: true
+    max_steps: 60
+    gradient_clip_val: 1.0
+    accumulate_grad_batches: 1
+    # pytorch-lightning counts val_check_interval in TRAINING BATCHES while max_steps and
+    # every_n_train_steps count OPTIMISER STEPS. With accumulate_grad_batches 1 those are
+    # the same thing here, unlike the venus config where accumulate 2 made validation run at
+    # half the checkpoint interval.
+    #
+    # KEPT EQUAL TO every_n_train_steps ON PURPOSE. It is tempting to checkpoint often (crash
+    # safety) while validating rarely (cost), but that quietly corrupts checkpoint SELECTION:
+    # `val/emission_mse` persists in `callback_metrics` between validations, so a checkpoint
+    # written at a non-validation step is ranked with the PREVIOUS validation's score and can
+    # take a top_k slot it did not earn. (It does not crash --
+    # ModelCheckpoint._save_topk_checkpoint only raises MisconfigurationException when the key
+    # is absent entirely AND the val loop has already run, which a stale-but-present value
+    # avoids. Verified against the installed pytorch_lightning 1.9.5 source.)
+    #
+    # 1250 gives 40 validations over the 50k-step campaign -- the same number the venus run
+    # did, so validation overhead is a known quantity rather than a new variable.
+    val_check_interval: 40
+    num_sanity_val_steps: 0
+    check_val_every_n_epoch: null   # if not set, validation does not run
+    # `devices` is not set here: train.py overwrites it from --gpus (0,1,2,3 -> 4).

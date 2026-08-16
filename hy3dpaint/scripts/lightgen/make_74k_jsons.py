@@ -25,7 +25,7 @@ Assertions (all hard; any failure aborts before a file is written):
       amount of missing data.
   A5  train json is disjoint from val64
   A6  train json is disjoint from the full val split and the full test split
-  A7  every directory named in either JSON exists under the root and holds the full 31-PNG +
+  A7  every directory named in either JSON exists under the root and holds the full 37-PNG +
       transforms.json payload, each as a regular file of nonzero size
 
 A5 and A6 are implied by A0+A1+A2 as the code stands (train_kept is a subset of the train list).
@@ -57,8 +57,13 @@ import sys
 
 SHA_RE = re.compile(r"^[0-9a-f]{32}$")
 VIEWS = range(6)
-SUFFIXES = ("albedo", "emission", "mr", "normal", "pos")
-# What one complete shape dir must contain: 30 render_tex PNGs + transforms.json, and render_cond.
+SUFFIXES = ("albedo", "emission", "mr", "alpha", "normal", "pos")
+# What one complete shape dir must contain: 36 render_tex PNGs + transforms.json, and render_cond.
+# `alpha` joined the fixture for conditioning parity with the other baselines; a pre-alpha shape
+# holds only 30 and is REJECTED here on purpose -- silently listing it would start a 57-hour run
+# whose dataloader dies on the first batch (or, worse, one that trains on a different condition
+# set than the config claims). Upgrade the fixture with
+# data_processing/multiview_render_pipeline/append_alpha_views.py first.
 EXPECT_TEX = {f"{v:03d}_{s}.png" for v in VIEWS for s in SUFFIXES} | {"transforms.json"}
 EXPECT_COND = {"000.png"}
 
@@ -228,7 +233,7 @@ def main():
         for d, why in bad[:10]:
             print(f"  {d}: {why}", file=sys.stderr)
         fail(f"A7: {len(bad)} of {len(train_dirs) + len(val64_dirs)} listed dirs are missing or incomplete")
-    ok(f"A7 all {len(train_dirs) + len(val64_dirs)} listed dirs exist and hold 30 render_tex PNGs "
+    ok(f"A7 all {len(train_dirs) + len(val64_dirs)} listed dirs exist and hold 36 render_tex PNGs "
        f"+ transforms.json + render_cond/000.png, each a regular nonempty file")
 
     # ---- write ---------------------------------------------------------------------------

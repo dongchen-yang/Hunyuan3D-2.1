@@ -45,25 +45,26 @@ def test_lightgen_emission_dataset_shapes():
     b0 = d[0]
     assert b0["images_cond"].shape == (2, 3, 512, 512), f"images_cond shape: {b0['images_cond'].shape}"
 
-    for key in ["images_albedo", "images_mr", "images_normal", "images_position", "images_emission"]:
+    for key in ["images_albedo", "images_mr", "images_alpha", "images_normal", "images_position", "images_emission"]:
         assert b0[key].shape == (6, 3, 512, 512), f"{key} shape: {b0[key].shape}"
 
     # Test item 9
     b9 = d[9]
     assert b9["images_cond"].shape == (2, 3, 512, 512)
-    for key in ["images_albedo", "images_mr", "images_normal", "images_position", "images_emission"]:
+    for key in ["images_albedo", "images_mr", "images_alpha", "images_normal", "images_position", "images_emission"]:
         assert b9[key].shape == (6, 3, 512, 512)
 
     # Check dtypes
     assert b0["images_cond"].dtype == torch.float32
     assert b0["images_albedo"].dtype == torch.float32
     assert b0["images_mr"].dtype == torch.float32
+    assert b0["images_alpha"].dtype == torch.float32
     assert b0["images_normal"].dtype == torch.float32
     assert b0["images_position"].dtype == torch.float32
     assert b0["images_emission"].dtype == torch.float32
 
     # Check value ranges
-    for key in ["images_cond", "images_albedo", "images_mr", "images_normal", "images_position", "images_emission"]:
+    for key in ["images_cond", "images_albedo", "images_mr", "images_alpha", "images_normal", "images_position", "images_emission"]:
         assert b0[key].min() >= 0.0, f"{key} min too low: {b0[key].min()}"
         assert b0[key].max() <= 1.0, f"{key} max too high: {b0[key].max()}"
 
@@ -87,7 +88,7 @@ def _make_synthetic_fixture(root, n_shapes, size=32):
         os.makedirs(os.path.join(d, "render_cond"), exist_ok=True)
         px = Image.fromarray(np.full((size, size, 3), k % 256, np.uint8))
         for v in range(6):
-            for s in ("albedo", "emission", "mr", "normal", "pos"):
+            for s in ("albedo", "emission", "mr", "alpha", "normal", "pos"):
                 px.save(os.path.join(d, "render_tex", f"{v:03d}_{s}.png"))
         px.save(os.path.join(d, "render_cond", "000.png"))
         dirs.append(d)

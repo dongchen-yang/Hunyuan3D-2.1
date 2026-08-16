@@ -966,20 +966,27 @@ class UNet2p5DConditionModel(torch.nn.Module):
         # just its rank in this concat, so a missing condition silently slides every later one
         # onto the wrong (pretrained) channels rather than failing. Guard the invariant before
         # any of it runs. Entirely inert upstream: neither PBR key is ever set there.
-        if "embeds_albedo" in cached_condition or "embeds_mr" in cached_condition:
-            if "embeds_mr" in cached_condition and "embeds_albedo" not in cached_condition:
+        _PBR_STACK = ("embeds_albedo", "embeds_mr", "embeds_alpha")
+        if any(k in cached_condition for k in _PBR_STACK):
+            # The stack is a PREFIX rule: each key may only be present if every key before
+            # it is too, because each one's channel offset is just its rank in the concat.
+            present = [k in cached_condition for k in _PBR_STACK]
+            if present != sorted(present, reverse=True):
                 raise RuntimeError(
-                    "lightgen: embeds_mr without embeds_albedo -- mr would land on conv_in "
-                    "channels 12-15 (albedo's) instead of 16-19."
+                    f"lightgen: PBR condition stack has a hole -- present="
+                    f"{dict(zip(_PBR_STACK, present))}. Offsets are positional "
+                    f"(albedo 12-15 | mr 16-19 | alpha 20-23), so a missing earlier key "
+                    f"slides every later one onto the wrong channels. Zero a tensor to drop "
+                    f"a condition, do not remove the key."
                 )
             missing = [k for k in ("embeds_normal", "embeds_position") if k not in cached_condition]
             if missing:
                 raise RuntimeError(
                     f"lightgen: {missing} missing while PBR conditions are present. Channel "
                     f"offsets assume the full stack [noisy 0-3 | normal 4-7 | position 8-11 | "
-                    f"albedo 12-15 | mr 16-19]; dropping a geometry condition would shift the "
-                    f"PBR latents onto pretrained geometry channels. Zero the tensor to drop a "
-                    f"condition, do not remove the key."
+                    f"albedo 12-15 | mr 16-19 | alpha 20-23]; dropping a geometry condition "
+                    f"would shift the PBR latents onto pretrained geometry channels. Zero the "
+                    f"tensor to drop a condition, do not remove the key."
                 )
 
         sample = [sample]
@@ -989,13 +996,16 @@ class UNet2p5DConditionModel(torch.nn.Module):
             sample.append(cached_condition["embeds_position"].unsqueeze(1).repeat(1, N_pbr, 1, 1, 1, 1))
         # lightgen: PBR latents enter the SAME channel-concat path as the geometry conditions.
         # Order is load-bearing: the pretrained conv_in owns channels [noisy 4 | normal 4 |
-        # position 4]; the lightgen conv_in expansion (12 -> 20) zero-inits channels 12-15 for
-        # albedo and 16-19 for mr, so albedo must append first and mr second, both after position.
-        # Both branches are no-ops for every upstream caller (neither key is ever set upstream).
-        if "embeds_albedo" in cached_condition:
-            sample.append(cached_condition["embeds_albedo"].unsqueeze(1).repeat(1, N_pbr, 1, 1, 1, 1))
-        if "embeds_mr" in cached_condition:
-            sample.append(cached_condition["embeds_mr"].unsqueeze(1).repeat(1, N_pbr, 1, 1, 1, 1))
+        # position 4]; the lightgen conv_in expansion (12 -> 24) zero-inits 12-15 for albedo,
+        # 16-19 for mr and 20-23 for alpha, so they must append in exactly that order, all
+        # after position. `alpha` is per-texel glTF opacity, added for conditioning parity with
+        # TEXGen's 13ch variant and TRELLIS.2's / SegviGen's PBR latent, which carry it already;
+        # it is APPENDED at the end rather than inserted next to mr precisely so that the
+        # channels the 20-channel run learned keep their meaning.
+        # All three branches are no-ops for every upstream caller (no PBR key is ever set there).
+        for _key in _PBR_STACK:
+            if _key in cached_condition:
+                sample.append(cached_condition[_key].unsqueeze(1).repeat(1, N_pbr, 1, 1, 1, 1))
         sample = torch.cat(sample, dim=-3)
 
         sample = rearrange(sample, "b n_pbr n c h w -> (b n_pbr n) c h w")

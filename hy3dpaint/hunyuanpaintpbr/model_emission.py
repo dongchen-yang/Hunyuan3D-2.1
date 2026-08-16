@@ -69,11 +69,22 @@ class HunyuanPaintEmission(HunyuanPaint):
         *args,
         val_num_inference_steps=30,
         gradient_checkpointing=False,
+        use_alpha=True,
         **kwargs,
     ):
         # `HunyuanPaint.__init__` strict-loads the pretrained ["albedo", "mr"] checkpoint; the
         # switch to a single emission slot happens afterwards, on top of the loaded weights.
         super().__init__(stable_diffusion_config, *args, **kwargs)
+
+        # Whether the per-texel glTF opacity map is a condition (conv_in channels 20-23).
+        # True is the current contract -- it is what gives this baseline the same input as
+        # TEXGen's 13ch variant, TRELLIS.2 and SegviGen. The flag exists so the archived
+        # 20-channel checkpoint (`step=00045000`, the "without alpha" eval row) stays loadable
+        # for re-scoring without checking out an older commit; set it false ONLY together with
+        # noise_in_channels 20 and the dataset's own use_alpha=false. Mismatches are caught per
+        # batch by `_assert_condition_channel_layout`, which checks the real conv_in width
+        # rather than trusting these three flags to agree.
+        self.use_alpha = use_alpha
 
         # LIGHTGEN_VAL_STEPS lets the smoke test cut the sampling loop short without a config edit.
         self.val_num_inference_steps = int(os.environ.get("LIGHTGEN_VAL_STEPS", val_num_inference_steps))
@@ -247,6 +258,11 @@ class HunyuanPaintEmission(HunyuanPaint):
             "embeds_albedo": self.encode_images(self._resize01(batch["images_albedo"])),
             "embeds_mr": self.encode_images(self._resize01(batch["images_mr"])),
         }
+        if self.use_alpha:
+            # Per-texel glTF opacity. Encoded exactly like the other PBR conditions (the map
+            # stores the scalar replicated across RGB, so the 3-channel VAE takes it as-is) and
+            # appended LAST in the conv_in stack -- see modules.py's `_PBR_STACK`.
+            cached["embeds_alpha"] = self.encode_images(self._resize01(batch["images_alpha"]))
         if normal_imgs is not None:
             cached["embeds_normal"] = self.encode_images(normal_imgs[0])
         if position_imgs is not None:
@@ -264,8 +280,7 @@ class HunyuanPaintEmission(HunyuanPaint):
         self._assert_condition_channel_layout(cached)
         return target_imgs, cached
 
-    @staticmethod
-    def _assert_condition_channel_layout(cached):
+    def _assert_condition_channel_layout(self, cached):
         """Fail loudly if the conv_in channel stack would come out mis-aligned.
 
         Each condition's conv_in channel offset is nothing but its position in the concat
@@ -275,21 +290,56 @@ class HunyuanPaintEmission(HunyuanPaint):
         pretrained normal/position channels. Neither raises on its own: the widths still work
         out if the conv_in was expanded to match.
 
-        `modules.py` carries the same check (it is the code that owns the offsets, and the
-        pipeline can reach it without passing through here). This one fires earlier, with the
-        conditioning still in hand. A raise rather than `assert` so `python -O` cannot drop it.
+        Two separate failures are checked:
+
+        1. a HOLE in the stack -- a key missing from the middle, which silently shifts every
+           later condition onto channels that mean something else;
+        2. a WIDTH disagreement between the stack this model is about to build and the conv_in
+           it will feed. `use_alpha` (here), the dataset's own `use_alpha` and the config's
+           `noise_in_channels` are three knobs that must agree, and nothing else forces them to.
+           Checking the real `conv_in.in_channels` catches every combination, including the
+           quiet one: noise_in_channels 24 with use_alpha false, which trains happily with four
+           permanently-zero input channels and is not recoverable after the fact.
+
+        `modules.py` carries the same offset check (it is the code that owns the offsets, and
+        the pipeline can reach it without passing through here). This one fires earlier, with
+        the conditioning still in hand. A raise rather than `assert` so `python -O` cannot
+        drop it.
         """
-        expected = ("embeds_normal", "embeds_position", "embeds_albedo", "embeds_mr")
+        expected = ["embeds_normal", "embeds_position", "embeds_albedo", "embeds_mr"]
+        if self.use_alpha:
+            expected.append("embeds_alpha")
         missing = [key for key in expected if key not in cached]
         if missing:
             raise RuntimeError(
                 f"conditioning is missing {missing}; conv_in expects the full positional stack "
-                f"[noisy 0-3 | normal 4-7 | position 8-11 | albedo 12-15 | mr 16-19]. To drop a "
-                f"condition (e.g. for guidance) zero its tensor -- never remove the key."
+                f"{self._stack_description()}. To drop a condition (e.g. for guidance) zero "
+                f"its tensor -- never remove the key."
+            )
+        if "embeds_alpha" in cached and not self.use_alpha:
+            raise RuntimeError(
+                "use_alpha is false but embeds_alpha was built; it would be concatenated onto "
+                "conv_in channels the model has no width for."
             )
 
+        # +1 for the noisy emission latent itself, which occupies channels 0-3.
+        want = 4 * (len(expected) + 1)
+        got = self.unet.unet.conv_in.in_channels
+        if want != got:
+            raise RuntimeError(
+                f"conv_in has {got} input channels but the condition stack "
+                f"{self._stack_description()} needs {want}. Set the config's "
+                f"noise_in_channels to {want} (train.py expands conv_in from the pretrained 12 "
+                f"to whatever it says), or flip use_alpha to match the checkpoint you are "
+                f"loading -- the 20-channel run is the one without alpha."
+            )
+
+    def _stack_description(self):
+        return ("[noisy 0-3 | normal 4-7 | position 8-11 | albedo 12-15 | mr 16-19"
+                + (" | alpha 20-23]" if self.use_alpha else "]"))
+
     def _apply_condition_dropout(self, cached, B):
-        """Upstream's classifier-free-guidance dropout recipe, extended to albedo/mr.
+        """Upstream's classifier-free-guidance dropout recipe, extended to albedo/mr/alpha.
 
         Draw structure follows `HunyuanPaint.training_step` exactly -- independent per-sample
         draws for the map embeddings, a separate draw for `position_maps`, a separate draw for
@@ -304,7 +354,12 @@ class HunyuanPaintEmission(HunyuanPaint):
         """
         for b in range(B):
             if np.random.rand() < self.drop_cond_prob:
-                for key in ("embeds_normal", "embeds_position", "embeds_albedo", "embeds_mr"):
+                # Zeroing (not removing) is what `_assert_condition_channel_layout` and
+                # modules.py's `_PBR_STACK` prefix rule require -- the key must stay so the
+                # positional channel offsets hold. alpha drops with the same draw as the rest
+                # of the stack, so guidance sees a coherent all-conditions-off sample.
+                for key in ("embeds_normal", "embeds_position", "embeds_albedo", "embeds_mr",
+                            "embeds_alpha"):
                     if key in cached:
                         cached[key][b, ...] = torch.zeros_like(cached[key][b, ...])
             if np.random.rand() < self.drop_cond_prob:

@@ -36,6 +36,12 @@ model:
     # 4 noisy emission + 4 normal + 4 position + 4 albedo + 4 mr.
     # train.py expands conv_in from the pretrained 12 to this, zero-initialising channels 12-19
     # (albedo 12-15, mr 16-19) to match the append order in hunyuanpaintpbr/unet/modules.py.
+    # use_alpha false because this config records the archived 20-channel run (ckpt step=00045000), now the "without alpha" ablation row.
+    # The default is now true (conditioning parity with the other baselines); stating
+    # it explicitly is what keeps this config loadable against its own checkpoint --
+    # model_emission cross-checks use_alpha, the dataset's use_alpha and this number
+    # against the real conv_in width on every batch.
+    use_alpha: false
     noise_in_channels: 20
 
     stable_diffusion_config:
@@ -58,6 +64,10 @@ data:
           num_view: 6
           # Generated on the node by Task 4: the v2 train split (71,646 shapes, minus any that
           # failed to render) as absolute paths under the staged render root.
+          # Matches model.params.use_alpha above: this config reproduces the run that
+          # predates the alpha condition, so the loader must not emit images_alpha
+          # even though the fixture now carries it.
+          use_alpha: false
           json_path: /localscratch/dya78/lightgen_mvpaint/mv74k_train.json
     validation:
       -
@@ -68,6 +78,10 @@ data:
           # 387 v2 val shapes, hash-sorted (see scripts/lightgen/make_val_subset.py for why a
           # subset and why hash-sorted). Full-387 validation at 30 sampling steps a shape would
           # cost more wall time than it buys.
+          # Matches model.params.use_alpha above: this config reproduces the run that
+          # predates the alpha condition, so the loader must not emit images_alpha
+          # even though the fixture now carries it.
+          use_alpha: false
           json_path: /localscratch/dya78/lightgen_mvpaint/mv74k_val64.json
 
 lightning:

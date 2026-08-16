@@ -41,6 +41,12 @@ model:
     # 4 noisy emission + 4 normal + 4 position + 4 albedo + 4 mr.
     # train.py expands conv_in from the pretrained 12 to this, zero-initialising channels 12-19
     # (albedo 12-15, mr 16-19) to match the append order in hunyuanpaintpbr/unet/modules.py.
+    # use_alpha false because this config records the phase-1 overfit pilot, trained before the alpha condition existed.
+    # The default is now true (conditioning parity with the other baselines); stating
+    # it explicitly is what keeps this config loadable against its own checkpoint --
+    # model_emission cross-checks use_alpha, the dataset's use_alpha and this number
+    # against the real conv_in width on every batch.
+    use_alpha: false
     noise_in_channels: 20
 
     stable_diffusion_config:
@@ -60,6 +66,10 @@ data:
         target: src.data.dataloader.lightgen_emission_loader.LightgenEmissionDataset
         params:
           num_view: 6
+          # Matches model.params.use_alpha above: this config reproduces the run that
+          # predates the alpha condition, so the loader must not emit images_alpha
+          # even though the fixture now carries it.
+          use_alpha: false
           json_path: scripts/lightgen/pilot10_venus.json
           # local workstation value, for reference: scripts/lightgen/pilot10_local.json
           # (holds /cs/3dlg-jupiter-project paths that venus cannot see).
@@ -68,6 +78,10 @@ data:
         target: src.data.dataloader.lightgen_emission_loader.LightgenEmissionDataset
         params:
           num_view: 6
+          # Matches model.params.use_alpha above: this config reproduces the run that
+          # predates the alpha condition, so the loader must not emit images_alpha
+          # even though the fixture now carries it.
+          use_alpha: false
           json_path: scripts/lightgen/pilot10_venus.json
           # local workstation value, for reference: scripts/lightgen/pilot10_local.json
 
