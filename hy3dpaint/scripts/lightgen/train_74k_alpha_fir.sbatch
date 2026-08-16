@@ -143,6 +143,32 @@ echo "LIGHTGEN_RUN_TS=$LIGHTGEN_RUN_TS"
 mkdir -p logs
 nvidia-smi --query-gpu=index,memory.used --format=csv -l 120 > "$ROOT/vram-alpha-$SLURM_JOB_ID.log" &
 
+# HOST-memory sampler. Smoke 54934387 was OOM-killed at a 1125 GB cgroup limit while sacct
+# reported MaxRSS of 21.5 GB -- because sacct SAMPLES (JobAcctGatherFrequency, ~30 s) and a
+# fast allocation spike falls between samples. nvidia-smi above watches the wrong memory for
+# that failure. This samples the cgroup's own counter every 2 s, which is the number the OOM
+# killer actually acts on, so a repeat tells us WHEN and HOW MUCH rather than just "Killed".
+# cgroup v2 first, v1 as fallback; `memory.peak` exists on newer kernels and is the cheapest
+# high-water mark there is.
+( CG=/sys/fs/cgroup
+  n=0
+  while true; do
+      cur=$(cat $CG/memory.current 2>/dev/null || cat $CG/memory/memory.usage_in_bytes 2>/dev/null || echo 0)
+      pk=$(cat $CG/memory.peak 2>/dev/null || echo 0)
+      rss=$(awk '/^MemAvailable:/{print $2}' /proc/meminfo)
+      echo "$(date +%H:%M:%S) cgroup_cur_GB=$((cur/1073741824)) cgroup_peak_GB=$((pk/1073741824)) host_avail_GB=$((rss/1048576))"
+      # Per-process breakdown every 5th sample. The cgroup total says HOW MUCH; this says
+      # WHO -- 4 big ranks and 40 small workers look identical in the total and need
+      # completely different fixes (model/DDP vs num_workers).
+      if [ $((n % 5)) -eq 0 ]; then
+          ps -eo rss=,comm=,args= --sort=-rss 2>/dev/null | head -6 \
+            | awk '{printf "    rss_GB=%.1f %s\n", $1/1048576, substr($0, index($0,$2), 60)}'
+          echo "    n_python=$(pgrep -c -f 'python train.py' 2>/dev/null || echo 0)"
+      fi
+      n=$((n+1))
+      sleep 2
+  done ) > "$ROOT/hostmem-$SLURM_JOB_ID.log" 2>&1 &
+
 python train.py \
     --base cfgs/lightgen-emission-74k-alpha-fir.yaml \
     --name 74k_alpha_fir \
