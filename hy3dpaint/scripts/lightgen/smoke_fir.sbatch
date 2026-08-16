@@ -7,8 +7,12 @@
 #
 # PREREQUISITES (each one is gated below, so a missing piece fails in seconds, not at hour 3):
 #   1. env      -- bash scripts/lightgen/env_setup_fir.sh   (login node; needs internet)
-#   2. snapshot -- HF revision 0b94677654c57bb9a6b6845cd7b704ccf551d327 under
-#                  /scratch/dya78/lightgen_mvpaint/hf_home  (login node)
+#   2. weights  -- bash scripts/lightgen/stage_fir.sh   (login node; needs internet)
+#                  TWO repos, not one: tencent/Hunyuan3D-2.1 (pinned revision
+#                  0b94677654c57bb9a6b6845cd7b704ccf551d327) AND facebook/dinov2-giant,
+#                  which the reference-image encoder pulls in separately at
+#                  hunyuanpaintpbr/unet/model.py:119. Staging only the first looks complete
+#                  until the model constructor runs -- it is what killed smoke 54933943.
 #   3. data     -- 12 tars in ~/projects/rrg-msavva/dya78/lightgen_mv74k_alpha/,
 #                  247,435 entries each
 #   4. splits   -- v2_{train,val,test}_shas.txt in /scratch/dya78/lightgen_mvpaint/v2_shas/.
