@@ -18,8 +18,8 @@
 #                  precisely so that a directory enumeration of the extracted fixture -- which
 #                  holds train AND val AND test -- cannot silently train on the evaluation set.
 #
-# RESOURCES. 1 GPU : 12 CPU : 288 GB is the H100 RGU ratio; a full node is 4:48:1152 and this
-# asks for exactly that. Over-requesting multiplies the RGU charge, under-utilising (<=30%
+# RESOURCES. 1 GPU : 12 CPU : 288 GB is the H100 RGU ratio; a full node is 4 GPUs : 48 CPUs : 1,152,000 MB
+# and this asks for exactly that (see the --mem note below). Over-requesting multiplies the RGU charge, under-utilising (<=30%
 # GPU) is penalised, so a full-node ask has to actually use all four cards -- it does.
 #
 # SMOKE VARIANT -- 3 h tier, 60 steps, val64 for both splits. Gates the real campaign.
@@ -32,7 +32,17 @@
 #SBATCH --nodes=1
 #SBATCH --ntasks-per-node=1
 #SBATCH --cpus-per-task=48
-#SBATCH --mem=1152G
+# --mem=0 means "all the memory on the node", which is what a whole-node job wants and is
+# immune to RealMemory changing under us.
+#
+# Do NOT write --mem=1152G here. The RGU ratio (1 GPU : 12 CPU : 288 GB) is decimal GB, so
+# 4 GPUs is 288*4 = 1152 GB = 1,152,000 MB -- exactly this node's RealMemory. But Slurm
+# reads the G suffix as GiB, making 1152G = 1,179,648 MB, i.e. 27 GB MORE than the node
+# has. The job is then simply unschedulable and sbatch says only
+#   allocation failure: Requested node configuration is not available
+# with no hint that memory is the culprit. Verified with --test-only 2026-08-16:
+# 1152G fails, 1152000M / 0 / 1100G all schedule.
+#SBATCH --mem=0
 #SBATCH --gres=gpu:h100:4
 #SBATCH --output=/scratch/dya78/lightgen_mvpaint/%x-%j.out
 #
