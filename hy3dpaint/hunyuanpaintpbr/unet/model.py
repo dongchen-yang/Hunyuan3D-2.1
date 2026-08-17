@@ -17,6 +17,7 @@ import os
 # import ipdb
 import numpy as np
 import torch
+from pytorch_lightning.utilities import rank_zero_info
 import torch.nn as nn
 import torch.nn.functional as F
 import pytorch_lightning as pl
@@ -575,6 +576,26 @@ class HunyuanPaint(pl.LightningModule):
         # 2. Create image grid combining ground truths and predictions
         # 3. Save visualization with step-numbered filename
         # 4. Clear memory for next validation cycle
+
+        # lightgen: a RESUMED run gets one validation with ZERO batches before training
+        # restarts -- pytorch-lightning 1.9 calls _run_validation() from the training epoch
+        # loop's on_advance_end() while the restored val dataloader still yields nothing
+        # ("Validation: 0it"). Upstream then cats an empty list and the whole run dies:
+        #   ValueError: torch.cat(): expected a non-empty list of Tensors
+        # That is what killed segments 2, 3 and 4 of campaign 20260816-013134 within minutes
+        # each, after segment 1 had banked 26,150 steps -- a chain cannot survive its own
+        # first hand-off without this guard.
+        #
+        # Returning early is collective-safe HERE, and only because the emptiness is
+        # all-or-nothing: the val DistributedSampler pads to an equal per-rank length, so
+        # either every rank has batches or none does (all four ranks raised this identically).
+        # If that ever stops holding, this needs an all_reduce on a has-output flag instead --
+        # a partial early return would deadlock the all_gather below, which is worse than the
+        # crash it replaces.
+        if not self.validation_step_outputs:
+            rank_zero_info("validation produced no batches (expected once on resume) -- "
+                           "skipping the grid for this cycle")
+            return
 
         images = torch.cat(self.validation_step_outputs, dim=0)
         all_images = self.all_gather(images)

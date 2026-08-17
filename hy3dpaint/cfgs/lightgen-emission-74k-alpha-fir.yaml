@@ -121,6 +121,14 @@ lightning:
       monitor: 'val/emission_mse'
       mode: min
       save_last: true
+  # Unconditional saves at the LR-cycle troughs (warm_up_step 1000 + T_step 9000 = a
+  # 10,000-step cycle, see configure_optimizers). The main callback above cannot be relied on
+  # for these: with save_top_k=3 + a monitor, a step that would not enter the top-k is never
+  # WRITTEN, so trough 20,000 of this campaign never existed on disk and no watcher could
+  # have saved it. These are the checkpoints the real point-sampled evaluator will choose
+  # between, because val/emission_mse is too noisy to select on.
+  trough_checkpoint:
+    every_n_train_steps: 10000
   callbacks: {}
 
   trainer:

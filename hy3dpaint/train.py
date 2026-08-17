@@ -375,6 +375,43 @@ if __name__ == "__main__":
             },
         },
     }
+    # lightgen: a SECOND, unconditional checkpointer for the LR-cycle troughs.
+    #
+    # The main callback runs save_top_k=3 on val/emission_mse, and ModelCheckpoint decides
+    # BEFORE writing whether a checkpoint would enter the top-k -- a step that would not is
+    # never written at all, not written-then-deleted. So no external watcher can preserve a
+    # specific step: campaign 20260816-013134's step 20,000 simply never existed on disk.
+    #
+    # That matters because val/emission_mse is noise-dominated here (64 shapes through 30
+    # stochastic sampling steps), so the checkpoints it keeps are partly luck, while the ones
+    # actually worth scoring are the LR-cycle troughs -- configure_optimizers uses
+    # warm_up_step=1000 + T_step=9000, i.e. a 10,000-step cosine-with-restarts cycle, and the
+    # trough is the converged end of each. Saving those unconditionally is what lets the final
+    # model be chosen with the real point-sampled evaluator instead of a noisy proxy.
+    #
+    # Opt-in: set lightning.trough_checkpoint.every_n_train_steps in the config. Writes to a
+    # `troughs/` subdirectory so it cannot compete with the main callback's top-k bookkeeping.
+    if "trough_checkpoint" in lightning_config:
+        trough_cfg = OmegaConf.merge(
+            OmegaConf.create({
+                "target": "pytorch_lightning.callbacks.ModelCheckpoint",
+                "params": {
+                    "dirpath": os.path.join(ckptdir, "troughs"),
+                    "filename": "trough-{step:08}",
+                    "save_top_k": -1,      # unconditional: no monitor, nothing to lose to
+                    "save_last": False,    # last.ckpt belongs to the main callback alone
+                    "verbose": True,
+                },
+            }),
+            OmegaConf.create({"params": lightning_config.trough_checkpoint}),
+        )
+        default_callbacks_cfg["trough_checkpoint"] = trough_cfg
+        rank_zero_print(
+            f"++++ trough checkpointer: every "
+            f"{lightning_config.trough_checkpoint.get('every_n_train_steps')} steps -> "
+            f"{os.path.join(ckptdir, 'troughs')} ++++"
+        )
+
     default_callbacks_cfg["checkpoint_callback"] = modelckpt_cfg
 
     if "callbacks" in lightning_config:
