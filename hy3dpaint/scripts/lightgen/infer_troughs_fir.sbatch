@@ -34,7 +34,14 @@
 # def-msavva_gpu, not rrg: this is evaluation, and the rrg allocation is for training.
 # One GPU is enough -- the checkpoints are scored sequentially and each pass is ~80 min.
 # PREREQUISITES staged from the workstation (neither lives in this submodule):
-#   scp evaluation/mvpaint_bridge/predict_emission_views.py  fir:/scratch/dya78/lightgen_mvpaint/
+#   # predict_emission_views.py computes REPO_ROOT as parents[2] of its own path and imports
+#   # evaluation.newdata_eval.seedutil, so it CANNOT be dropped in as a lone file -- it needs
+#   # its position in a repo-shaped tree. Staging just the script gave
+#   #   ModuleNotFoundError: No module named 'evaluation'
+#   # ~1 minute into job 55307027, after the extract had already run.
+#   mkdir -p $ROOT/repo/evaluation/{mvpaint_bridge,newdata_eval}
+#   scp evaluation/mvpaint_bridge/predict_emission_views.py fir:$ROOT/repo/evaluation/mvpaint_bridge/
+#   scp evaluation/newdata_eval/{seedutil.py,__init__.py}   fir:$ROOT/repo/evaluation/newdata_eval/
 #   scp evaluation/newdata_eval/eval_sets/usable.txt         fir:/scratch/dya78/lightgen_mvpaint/v2_shas/usable381.txt
 # Both are gated below, so a missing one fails in seconds rather than after the extract.
 set -euo pipefail
@@ -46,7 +53,8 @@ OUT=$ROOT/trough_views_${STAMP}
 SNAP=$ROOT/hf_home/hub/models--tencent--Hunyuan3D-2.1/snapshots/0b94677654c57bb9a6b6845cd7b704ccf551d327/hunyuan3d-paintpbr-v2-1
 TARS=~/projects/rrg-msavva/dya78/lightgen_mv74k_alpha
 
-[ -f "$ROOT/predict_emission_views.py" ] || { echo "ABORT: predict_emission_views.py not staged (see PREREQUISITES)"; exit 2; }
+[ -f "$ROOT/repo/evaluation/mvpaint_bridge/predict_emission_views.py" ] || { echo "ABORT: predict_emission_views.py not staged in the repo-shaped tree (see PREREQUISITES)"; exit 2; }
+[ -f "$ROOT/repo/evaluation/newdata_eval/seedutil.py" ] || { echo "ABORT: seedutil.py not staged (see PREREQUISITES)"; exit 2; }
 [ -s "$ROOT/v2_shas/usable381.txt" ] || { echo "ABORT: usable381.txt not staged (see PREREQUISITES)"; exit 2; }
 [ -n "$CK" ] && [ -d "$CK/troughs" ] || { echo "ABORT: no troughs dir under $CK"; exit 2; }
 
@@ -80,16 +88,25 @@ json.dump(dirs, open(out, "w"))
 print(f"wrote {out}: {len(dirs)} dirs, all present, all alpha-complete")
 PY
 
+# Import gate. The previous failure surfaced only after the 55 s extract and the model load;
+# checking the import first turns it into a 2-second abort.
+python -c "
+import sys; sys.path.insert(0, '$ROOT/repo')
+from evaluation.newdata_eval.seedutil import sample_seed
+print('[gate] seedutil imports OK')
+" || { echo "ABORT: predict_emission_views.py's own imports do not resolve"; exit 2; }
+
 cd "$ROOT/Hunyuan3D-2.1-emissive/hy3dpaint"
 for CKPT in "$CK"/troughs/trough-step=*.ckpt; do
     TAG=$(basename "$CKPT" .ckpt | sed 's/trough-step=0*/t/')
     echo "=== $(date -Is) inference $TAG ($CKPT) ==="
-    PYTHONPATH=$PWD python "$ROOT/predict_emission_views.py" \
+    PYTHONPATH=$PWD python "$ROOT/repo/evaluation/mvpaint_bridge/predict_emission_views.py" \
         --config cfgs/lightgen-emission-74k-alpha-fir.yaml \
         --ckpt "$CKPT" \
         --snapshot "$SNAP" \
         --examples_json "$ROOT/val381_node.json" \
         --seeds 1 --seed_base 0 \
+        --hy3dpaint_root "$ROOT/Hunyuan3D-2.1-emissive/hy3dpaint" \
         --out "$OUT/$TAG"
     echo "=== $TAG done: $(ls "$OUT/$TAG" | wc -l) shape dirs, $(du -sh "$OUT/$TAG" | cut -f1) ==="
 done
