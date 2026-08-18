@@ -20,7 +20,14 @@
 #SBATCH --nodes=1
 #SBATCH --ntasks-per-node=1
 #SBATCH --cpus-per-task=12
-#SBATCH --mem=0
+# 288000M = the 1 GPU : 12 CPU : 288 GB ratio EXACTLY (the node is 1,152,000 MB for 4 GPUs),
+# in decimal MB so the GiB-vs-GB trap cannot bite. Do NOT use --mem=0 here: that means "all
+# the memory on the node", which is right for a whole-node job and is REJECTED for a
+# single-GPU one -- `sbatch --test-only` returns only
+#   allocation failure: Unspecified error
+# naming neither memory nor the reason. Verified 2026-08-18: 0 fails, 288000M and 288G both
+# schedule; 288000M is the one that matches the ratio rather than exceeding it by 7 GB.
+#SBATCH --mem=288000M
 #SBATCH --gres=gpu:h100:1
 #SBATCH --output=/scratch/dya78/lightgen_mvpaint/%x-%j.out
 #
