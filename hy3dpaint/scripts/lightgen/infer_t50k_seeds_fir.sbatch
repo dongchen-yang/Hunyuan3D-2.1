@@ -59,7 +59,21 @@ TARS=~/projects/rrg-msavva/dya78/lightgen_mv74k_alpha
 [ -n "$CK" ] && [ -d "$CK/troughs" ] || { echo "ABORT: no troughs dir under $CK"; exit 2; }
 
 echo "=== $(date -Is) host=$(hostname) job=$SLURM_JOB_ID ==="
-nvidia-smi --query-gpu=name,memory.total --format=csv,noheader
+nvidia-smi --query-gpu=name,memory.total,memory.used --format=csv,noheader
+# GPU-OCCUPANCY GATE. Job 55318866 died with an opaque `CUDA error: out of memory` during
+# model load on fc10512, while the identical job had just succeeded on fc10519 -- the
+# allocations were byte-for-byte the same. fir's bygpu partitions hand out individual GPUs
+# from shared nodes, so a card can arrive with another process's memory still resident.
+# The old line printed memory.TOTAL, which is identical on a healthy and a busy card and
+# therefore told us nothing. Fail here, naming the number, instead of 3 minutes later inside
+# torch. 4096 MiB of slack covers driver/ECC overhead without masking a real squatter.
+USED=$(nvidia-smi --query-gpu=memory.used --format=csv,noheader,nounits | head -1)
+if [ "${USED:-0}" -gt 4096 ]; then
+    echo "ABORT: this GPU already has ${USED} MiB in use before we start -- another job is"
+    echo "       resident on it. Resubmit; Slurm will usually place the retry elsewhere."
+    exit 4
+fi
+echo "[gate] GPU free (${USED} MiB in use)"
 
 module load StdEnv/2023 python/3.12 cuda/12.6
 source "$ROOT/env/bin/activate"
