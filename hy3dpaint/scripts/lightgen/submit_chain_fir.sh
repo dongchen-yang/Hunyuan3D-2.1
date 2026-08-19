@@ -38,10 +38,17 @@
 #   bash scripts/lightgen/submit_chain_fir.sh [N_SEGMENTS]        # default 4
 #   bash scripts/lightgen/submit_chain_fir.sh 2 20260815-235959   # extend an EXISTING run
 #
+# Which campaign it drives is an env override, defaulting to the original alpha run:
+#   TRAIN_SBATCH=scripts/lightgen/train_74k_alpha_nonzero_nocopy_fir.sbatch \
+#   JOB_PREFIX=mvpaint_alpha_nonzero_nocopy \
+#     bash scripts/lightgen/submit_chain_fir.sh 4
+# (JOB_PREFIX names the segments "<prefix>_sN"; %x in the sbatch's --output follows it.)
+#
 set -euo pipefail
 
 N=${1:-4}
-SBATCH_FILE="$(dirname "$0")/train_74k_alpha_fir.sbatch"
+SBATCH_FILE="${TRAIN_SBATCH:-$(dirname "$0")/train_74k_alpha_fir.sbatch}"
+JOB_PREFIX="${JOB_PREFIX:-mvpaint_alpha}"
 [ -f "$SBATCH_FILE" ] || { echo "ABORT: $SBATCH_FILE not found"; exit 1; }
 
 # Second argument continues an existing campaign; without it a new stamp starts a new run.
@@ -59,7 +66,7 @@ for i in $(seq 1 "$N"); do
     # --export=ALL keeps the submitting environment (module paths etc.) and adds the stamp.
     out=$(sbatch --parsable $dep \
                  --export=ALL,LIGHTGEN_RUN_TS="$TS" \
-                 --job-name="mvpaint_alpha_s$i" \
+                 --job-name="${JOB_PREFIX}_s$i" \
                  "$SBATCH_FILE")
     jid=${out%%;*}
     ids+=("$jid")
