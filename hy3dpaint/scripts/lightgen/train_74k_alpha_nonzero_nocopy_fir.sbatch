@@ -85,6 +85,21 @@ EXPECT_SHAPES=72420
 echo "=== $(date -Is) host=$(hostname) job=$SLURM_JOB_ID ==="
 nvidia-smi --query-gpu=index,name,memory.total --format=csv,noheader
 
+# GPU-OCCUPANCY GATE, ported from infer_troughs_fir.sbatch (commit 013d548) and widened
+# to all four cards. A whole-node job is entitled to 4 clean GPUs, but segments s3/s4
+# (55531930/31, 2026-08-20) OOM'd at model_to_device() on fc10218 because a process SLURM
+# never cleaned up (PID 2342614) still held 68.93 GiB on GPU 0 -- each segment burned its
+# 4-minute extract before dying. Fail here in seconds, naming the card and the number.
+# 4096 MiB of slack covers driver/ECC overhead without masking a real squatter.
+BUSY=$(nvidia-smi --query-gpu=index,memory.used --format=csv,noheader,nounits \
+       | awk -F', ' '$2+0 > 4096 {printf "GPU%s=%sMiB ", $1, $2}')
+if [ -n "$BUSY" ]; then
+    echo "ABORT: leaked process(es) resident on this node before we start: $BUSY"
+    echo "       Resubmit; consider sbatch --exclude=$(hostname -s)."
+    exit 4
+fi
+echo "[gate] all 4 GPUs clean"
+
 # --- gates ------------------------------------------------------------------------------
 [ -d "$ROOT/env" ] || { echo "ABORT: no venv at $ROOT/env -- run env_setup_fir.sh"; exit 2; }
 for f in nonzero_nocopy_train_shas.txt v2_val_shas.txt v2_test_shas.txt; do
@@ -151,6 +166,10 @@ python scripts/lightgen/make_74k_jsons.py \
 # cluster. Sync from the workstation afterwards:
 #   wandb sync -p LightGen $ROOT/.../logs/lightgen-emission-74k-alpha-nonzero-nocopy-74k_alpha_nonzero_nocopy_fir-<TS>/wandb/offline-run-*
 export WANDB_MODE=offline
+# Segment s2 (55531929) died with wandb ServicePollForTokenError: wandb-core started but
+# did not write its port file within the default 30 s -- on the same sick node that OOM'd
+# s3/s4. 300 s tolerates a slow service start; offline behavior is otherwise unchanged.
+export WANDB_SERVICE_WAIT=300
 export LIGHTGEN_WANDB_NAME='mvpaint_pbr->emission_74k_v2_alpha_nonzero_nocopy'
 # Computed ONCE here, not in train.py: lightning's DDP launcher re-execs train.py per rank
 # and each re-exec must inherit the same value, or the four ranks write four logdirs.
