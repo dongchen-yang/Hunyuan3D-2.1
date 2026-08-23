@@ -144,7 +144,10 @@ git pull --ff-only
 cd hy3dpaint
 [ -f "$CFG" ] || { echo "ABORT: $CFG not in the pulled clone"; exit 2; }
 # The early SNAP gate and the config must name the same directory, or the gate proves nothing.
-grep -qF "$SNAP" "$CFG" || { echo "ABORT: $CFG does not name the gated snapshot $SNAP"; exit 2; }
+# Compare the parsed VALUE, not a substring: `grep -F "$SNAP" "$CFG"` would also pass on a
+# mention in a comment, or on a longer path that merely starts with $SNAP.
+CFG_SNAP=$(awk -F': *' '/^[[:space:]]*pretrained_model_name_or_path:/ {print $2; exit}' "$CFG")
+[ "$CFG_SNAP" = "$SNAP" ] || { echo "ABORT: $CFG names snapshot '$CFG_SNAP', but the gate checked '$SNAP'"; exit 2; }
 export PYTHONNOUSERSITE=1
 export TORCH_CUDA_ARCH_LIST="12.0"
 export HF_HOME=$ROOT/hf_home
