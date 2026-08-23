@@ -67,6 +67,20 @@
 # b3 is backed by 90 nodes against b4's 60, and the b4 reservation is structural -- waiting
 # does not clear it. An earlier probe (a few hours before) had all three tiers returning the
 # SAME slot, which is why the first submission took the longer tier; that stopped being true.
+#
+# ‼️ WHAT ACTUALLY HAPPENED, and the lesson worth more than the tier choice:
+# the resubmitted b3 job landed at 2026-08-24T02:10, NOT the 16:41 that --test-only had just
+# promised -- while a FRESH --test-only probe, run minutes later with identical resources,
+# still said 16:41. Same scheduler, same ask, 9.5 h apart.
+# **`sbatch --test-only` has no predictive power for where a job will actually sit in the
+# queue.** Its will-run simulation assumes the job exists NOW and outranks everything pending;
+# it does not model fairshare competition -- including our own concurrently RUNNING jobs on the
+# same account, which are exactly what pushes the next one down. Use --test-only only to learn
+# which PARTITION a --time value routes to; never quote its start time as an estimate, and
+# never scancel a queued job on the strength of it.
+# Net effect of this tier switch was ~1.3 h (b4 03:30 -> b3 02:10), not the ~11 h the probe
+# implied. It was still worth taking, but it was not the trade it looked like.
+#
 # NOTE: `scontrol update TimeLimit=` does NOT re-route an already-queued job -- Slurm picks the
 # partition at submit time -- so switching tiers requires scancel + resubmit. Verified.
 #
