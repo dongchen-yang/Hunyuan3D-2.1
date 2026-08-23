@@ -35,6 +35,14 @@ def test_lightgen_emission_dataset_shapes():
     """Test that LightgenEmissionDataset produces correct shapes and dtypes."""
     if not os.path.exists(EXAMPLES_JSON):
         pytest.skip(f"fixture root absent: {EXAMPLES_JSON}")
+    # The JSON is committed, but the dirs it names live on jupiter -- which fir and every
+    # other non-workstation machine does not mount. Without this the test FAILS there
+    # (decode guard exhausts its substitutions) instead of skipping, which reads as a real
+    # regression when someone runs the suite on the cluster.
+    with open(EXAMPLES_JSON) as _f:
+        _dirs = json.load(_f)
+    if not _dirs or not os.path.isdir(_dirs[0]):
+        pytest.skip(f"fixture dirs unreachable here (no jupiter mount?): {_dirs[:1]}")
 
     d = LightgenEmissionDataset(EXAMPLES_JSON, num_view=6, image_size=512)
 

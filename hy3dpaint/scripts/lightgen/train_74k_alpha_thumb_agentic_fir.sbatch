@@ -177,7 +177,17 @@ cd hy3dpaint
 CFG_SNAP=$(awk -F': *' '/^[[:space:]]*pretrained_model_name_or_path:/ {print $2; exit}' "$CFG")
 [ "$CFG_SNAP" = "$SNAP" ] || { echo "ABORT: $CFG names snapshot '$CFG_SNAP', but the gate checked '$SNAP'"; exit 2; }
 
-module load StdEnv/2023 python/3.12 cuda/12.6
+# opencv is REQUIRED as of the thumbnail-reference loader: it imports loader_util for
+# BaseDataset.load_image/augment_image, and loader_util imports cv2 (augment_image's
+# perspective branch calls cv2.getPerspectiveTransform/warpPerspective). fir's venv does NOT
+# have cv2 -- env_setup_fir.sh never installed it, because no earlier fir run imported
+# loader_util -- and Alliance deliberately ships an `opencv-noinstall` shim in the wheelhouse
+# so `pip install opencv-python` FAILS by design. The module is the supported route.
+# Verified 2026-08-23: cv2 4.12.0 against the venv's numpy 1.26.4, getPerspectiveTransform OK.
+# (A `_alliance_opencv.pth` in the venv's site-packages points at the same directory, so the
+# already-queued segments of this chain -- whose .sbatch was spooled before this line existed
+# -- also find cv2. Both routes resolve to the same files; loading the module is harmless.)
+module load StdEnv/2023 python/3.12 cuda/12.6 opencv/4.12.0
 source "$ROOT/env/bin/activate"
 export PYTHONNOUSERSITE=1
 export HF_HOME=$ROOT/hf_home
