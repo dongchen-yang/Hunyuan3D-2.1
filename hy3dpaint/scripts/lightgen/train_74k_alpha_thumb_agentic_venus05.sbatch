@@ -119,6 +119,49 @@ SNAP=$ROOT/hf_home/hub/models--tencent--Hunyuan3D-2.1/snapshots/0b94677654c57bb9
 [ -d "$SNAP" ] || { echo "ABORT: pinned HF snapshot missing at $SNAP (PREREQUISITES 2)"; exit 2; }
 [ -d "$ROOT/hf_home/hub/models--facebook--dinov2-giant" ] || { echo "ABORT: dinov2-giant snapshot missing (PREREQUISITES 2)"; exit 2; }
 
+source /localscratch/dya78/miniconda3/etc/profile.d/conda.sh
+conda activate hunyuanpaint
+
+cd $ROOT/Hunyuan3D-2.1-emissive
+# `git pull --ff-only` pulls whatever branch is checked out. Assert the branch: a clone left on
+# a different one would train this campaign on code nobody reviewed, and pull would report success.
+BRANCH=$(git rev-parse --abbrev-ref HEAD)
+[ "$BRANCH" = "lightgen" ] || { echo "ABORT: node clone is on branch '$BRANCH', expected lightgen"; exit 2; }
+git pull --ff-only
+cd hy3dpaint
+[ -f "$CFG" ] || { echo "ABORT: $CFG not in the pulled clone"; exit 2; }
+# The early SNAP gate and the config must name the same directory, or the gate proves nothing.
+# Compare the parsed VALUE, not a substring: `grep -F "$SNAP" "$CFG"` would also pass on a
+# mention in a comment, or on a longer path that merely starts with $SNAP.
+CFG_SNAP=$(awk -F': *' '/^[[:space:]]*pretrained_model_name_or_path:/ {print $2; exit}' "$CFG")
+[ "$CFG_SNAP" = "$SNAP" ] || { echo "ABORT: $CFG names snapshot '$CFG_SNAP', but the gate checked '$SNAP'"; exit 2; }
+
+# cv2 PREFLIGHT. The thumbnail-reference loader imports loader_util for upstream's
+# load_image/augment_image, and loader_util does `import cv2` (augment_image's perspective
+# branch calls cv2.getPerspectiveTransform/warpPerspective). NO EARLIER RUN ON THIS NODE EVER
+# IMPORTED loader_util, so this env was never required to have cv2 -- and fir's venv turned
+# out NOT to (found 2026-08-23, would have died at import after the whole staging cost).
+# Checked HERE -- after git pull (so it tests the CODE THAT WILL RUN) but before the
+# 12.6 GB extract, so a miss costs seconds. It is the loader itself
+# that is imported, not just cv2, so this also catches any other new dependency.
+python - <<'PYCHK' || { echo "ABORT: the training env cannot import the loader (see traceback above)."; \
+  echo "       If it is cv2: 'conda install -n hunyuanpaint -c conda-forge opencv' or"; \
+  echo "       'pip install opencv-python-headless' on this node, then resubmit."; exit 2; }
+import sys
+sys.path.insert(0, ".")
+from src.data.dataloader.lightgen_emission_loader import LightgenEmissionDataset as D
+assert D.REF_SOURCES == ("frontal_albedo", "thumbnail"), D.REF_SOURCES
+import cv2, numpy as np
+cv2.getPerspectiveTransform(np.float32([[0,0],[8,0],[8,8],[0,8]]),
+                            np.float32([[1,1],[7,0],[8,7],[0,8]]))
+print(f"[gate] loader imports OK; cv2 {cv2.__version__}, numpy {np.__version__}")
+PYCHK
+export PYTHONNOUSERSITE=1
+export TORCH_CUDA_ARCH_LIST="12.0"
+export HF_HOME=$ROOT/hf_home
+export HF_HUB_OFFLINE=1
+export TRANSFORMERS_OFFLINE=1
+
 # --- thumbnails: the reference images, from jupiter's tar ---------------------------------
 # Whole archive (12.6 GB, 2-3 min on the node's jupiter path), idempotent by count. Members
 # are emissive_thumbnails/<sha>.png; the config's thumbnail_dir is the $ROOT/thumbnails link.
@@ -148,27 +191,6 @@ ln -sfn emissive_thumbnails "$ROOT/thumbnails"
 LINKED=$(readlink -f "$ROOT/thumbnails" || true)
 [ "$LINKED" = "$(readlink -f "$THUMBS")" ] || { echo "ABORT: $ROOT/thumbnails resolves to '$LINKED', not $THUMBS (a real directory of that name is in the way -- remove it)"; exit 3; }
 echo "[thumbs] $N_THUMB files at $THUMBS; anchor OK; $ROOT/thumbnails -> emissive_thumbnails"
-
-source /localscratch/dya78/miniconda3/etc/profile.d/conda.sh
-conda activate hunyuanpaint
-cd $ROOT/Hunyuan3D-2.1-emissive
-# `git pull --ff-only` pulls whatever branch is checked out. Assert the branch: a clone left on
-# a different one would train this campaign on code nobody reviewed, and pull would report success.
-BRANCH=$(git rev-parse --abbrev-ref HEAD)
-[ "$BRANCH" = "lightgen" ] || { echo "ABORT: node clone is on branch '$BRANCH', expected lightgen"; exit 2; }
-git pull --ff-only
-cd hy3dpaint
-[ -f "$CFG" ] || { echo "ABORT: $CFG not in the pulled clone"; exit 2; }
-# The early SNAP gate and the config must name the same directory, or the gate proves nothing.
-# Compare the parsed VALUE, not a substring: `grep -F "$SNAP" "$CFG"` would also pass on a
-# mention in a comment, or on a longer path that merely starts with $SNAP.
-CFG_SNAP=$(awk -F': *' '/^[[:space:]]*pretrained_model_name_or_path:/ {print $2; exit}' "$CFG")
-[ "$CFG_SNAP" = "$SNAP" ] || { echo "ABORT: $CFG names snapshot '$CFG_SNAP', but the gate checked '$SNAP'"; exit 2; }
-export PYTHONNOUSERSITE=1
-export TORCH_CUDA_ARCH_LIST="12.0"
-export HF_HOME=$ROOT/hf_home
-export HF_HUB_OFFLINE=1
-export TRANSFORMERS_OFFLINE=1
 
 # --- example JSONs ------------------------------------------------------------------------
 # Rebuilt each job (idempotent). A7 proves the fixture holds the alpha maps AND, with

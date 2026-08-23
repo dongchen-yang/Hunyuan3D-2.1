@@ -205,6 +205,25 @@ cd hy3dpaint
 CFG_SNAP=$(awk -F': *' '/^[[:space:]]*pretrained_model_name_or_path:/ {print $2; exit}' "$CFG")
 [ "$CFG_SNAP" = "$SNAP" ] || { echo "ABORT: $CFG names snapshot '$CFG_SNAP', but the gate checked '$SNAP'"; exit 2; }
 
+# cv2 PREFLIGHT. The thumbnail-reference loader imports loader_util for upstream's
+# load_image/augment_image, and loader_util does `import cv2`. fir's venv did NOT have it
+# (found 2026-08-23 -- no earlier fir run imported loader_util, and Alliance's wheelhouse
+# ships an opencv-noinstall shim so pip fails by design); it is supplied by the opencv module
+# loaded above plus a _alliance_opencv.pth in the venv. Verify the LOADER ITSELF imports --
+# after git pull, so it tests the code that will run, and before the extracts, so a miss
+# costs seconds instead of 85 GB of staging.
+python - <<'PYCHK' || { echo "ABORT: the training env cannot import the loader (traceback above)."; \
+  echo "       If it is cv2: check 'module load opencv/4.12.0' and the venv's _alliance_opencv.pth."; exit 2; }
+import sys
+sys.path.insert(0, ".")
+from src.data.dataloader.lightgen_emission_loader import LightgenEmissionDataset as D
+assert D.REF_SOURCES == ("frontal_albedo", "thumbnail"), D.REF_SOURCES
+import cv2, numpy as np
+cv2.getPerspectiveTransform(np.float32([[0,0],[8,0],[8,8],[0,8]]),
+                            np.float32([[1,1],[7,0],[8,7],[0,8]]))
+print(f"[gate] loader imports OK; cv2 {cv2.__version__}, numpy {np.__version__}")
+PYCHK
+
 # opencv is REQUIRED as of the thumbnail-reference loader: it imports loader_util for
 # BaseDataset.load_image/augment_image, and loader_util imports cv2 (augment_image's
 # perspective branch calls cv2.getPerspectiveTransform/warpPerspective). fir's venv does NOT
