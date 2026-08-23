@@ -7,6 +7,8 @@ import numpy as np
 import torch
 from PIL import Image
 
+from .loader_util import BaseDataset
+
 # Shapes whose load has already been reported, so a permanently-corrupt file does not print on
 # every visit. Dataloader workers are separate processes, so this is deliberately per-worker
 # state, and with persistent_workers off the workers are respawned each epoch -- so the true
@@ -22,13 +24,29 @@ _REPORTED_BAD = set()
 MAX_FAILED_INDICES = 3
 
 
-class LightgenEmissionDataset(torch.utils.data.Dataset):
+class LightgenEmissionDataset(BaseDataset):
     """Fixed-6-view loader for lightgen multiview emission fixtures.
 
     Differences from upstream TextureDataset: no lighting-suffix logic, no random
     view subsampling (views are the canonical 000-005), adds images_emission and
-    images_alpha, and the reference image is render_cond/000.png duplicated twice
-    (upstream code slices images_cond[:, 0:1] and [:, 1:2]).
+    images_alpha. The reference image (`images_cond`, the same image stacked twice --
+    upstream code slices images_cond[:, 0:1] and [:, 1:2], and only slot 0 is used
+    by model_emission.py) is selected by `ref_source`:
+
+      frontal_albedo  render_cond/000.png, our unlit GT-albedo render from upstream's
+                      azimuth-0 camera (== render_tex/001_albedo.png). Every Hunyuan row
+                      up to and including _nonzero_nocopy trained this way. Default.
+      thumbnail       <thumbnail_dir>/<basename(fixture dir)>.png -- the TexVerse thumbnail
+                      TEXGen (CLIP) and TRELLIS.2 (DINOv3) condition on; the fixture dir's
+                      basename IS the sha that names the thumbnail. Loaded through
+                      upstream's own BaseDataset.load_image (plain square resize, RGBA
+                      composited onto the drawn background colour) and, when `augment_ref`,
+                      through BaseDataset.augment_image with upstream's defaults (training
+                      only; validation and inference pass augment_ref=False). No fallback to
+                      render_cond: a missing thumbnail is a bad example (substituted, and
+                      fatal after MAX_FAILED_INDICES distinct ones) -- TEXGen once trained a
+                      whole run on its albedo UV map behind a silent thumbnail fallback.
+                      Spec: lightgen docs/superpowers/specs/2026-08-23-hunyuan3d-paint-thumbnail-reference-design.md
 
     `images_alpha` is the per-texel glTF opacity map, added for conditioning parity
     with the other LightGen baselines (TEXGen's 13ch variant, TRELLIS.2 and
@@ -42,8 +60,19 @@ class LightgenEmissionDataset(torch.utils.data.Dataset):
     # matches the conv_in concat order in hunyuanpaintpbr/unet/modules.py, so keep it that way.
     MAPS = [("albedo", "albedo"), ("mr", "mr"), ("alpha", "alpha"),
             ("normal", "normal"), ("position", "pos"), ("emission", "emission")]
+    REF_SOURCES = ("frontal_albedo", "thumbnail")
+    # Upstream's reference background colours (objaverse_loader_forTexturePBR.py:52-54).
+    _BG_GRAY = [127 / 255.0] * 3
+    _BG_BLACK = [0.0] * 3
+    _BG_WHITE = [1.0] * 3
 
-    def __init__(self, json_path, num_view=6, image_size=512, use_alpha=True):
+    def __init__(self, json_path, num_view=6, image_size=512, use_alpha=True,
+                 ref_source="frontal_albedo", thumbnail_dir=None, augment_ref=False):
+        # BaseDataset.__init__ is deliberately NOT called: all it does is read json_path into
+        # self.data and set num_view/image_size. This class keeps its list in self.dirs (which
+        # predict_emission_views.py rebinds for --limit) and sets the scalars itself; the base
+        # class is inherited for load_image / augment_image -- upstream's reference path,
+        # reused verbatim rather than copied.
         with open(json_path) as f:
             self.dirs = json.load(f)
         self.num_view, self.image_size = num_view, image_size
@@ -53,6 +82,27 @@ class LightgenEmissionDataset(torch.utils.data.Dataset):
         # conv_in width per batch, so a half-flipped combination raises rather than trains.
         self.use_alpha = use_alpha
         self.maps = [m for m in self.MAPS if use_alpha or m[0] != "alpha"]
+        if ref_source not in self.REF_SOURCES:
+            raise ValueError(f"ref_source must be one of {self.REF_SOURCES}, got {ref_source!r}")
+        if ref_source == "thumbnail":
+            if not thumbnail_dir:
+                raise ValueError("ref_source='thumbnail' needs thumbnail_dir (<dir>/<sha>.png)")
+            if not os.path.isdir(thumbnail_dir):
+                raise FileNotFoundError(f"thumbnail_dir {thumbnail_dir!r} is not a directory")
+        elif thumbnail_dir is not None:
+            # Rejected, not ignored: a caller that passes thumbnail_dir but forgets
+            # ref_source='thumbnail' would train on render_cond/000.png while believing it
+            # trained on thumbnails -- the silent-wrong-condition failure this selector exists
+            # to prevent (resolve_ref_source rejects the mirror case at inference).
+            raise ValueError("thumbnail_dir is only used by ref_source='thumbnail'; passing it "
+                             "with ref_source='frontal_albedo' would silently load "
+                             "render_cond/000.png instead")
+        elif augment_ref:
+            raise ValueError("augment_ref is only defined for ref_source='thumbnail'; the "
+                             "frontal_albedo rows were never augmented and must stay reproducible")
+        self.ref_source = ref_source
+        self.thumbnail_dir = thumbnail_dir
+        self.augment_ref = bool(augment_ref)
 
     def __len__(self):
         return len(self.dirs)
@@ -61,15 +111,40 @@ class LightgenEmissionDataset(torch.utils.data.Dataset):
         im = Image.open(path).convert("RGB").resize((self.image_size,) * 2, Image.LANCZOS)
         return torch.from_numpy(np.asarray(im, np.float32) / 255.0).permute(2, 0, 1)
 
+    @classmethod
+    def _draw_bg_color(cls):
+        """Upstream's per-example background draw (objaverse_loader_forTexturePBR.py:101-106):
+        gray with p=0.6, otherwise black/white 50/50. Used as the RGBA composite colour and as
+        the fill colour of augment_image; an RGB thumbnail only sees it through the fill."""
+        if random.random() < 0.6:
+            return cls._BG_GRAY
+        return cls._BG_BLACK if random.random() < 0.5 else cls._BG_WHITE
+
+    def _ref(self, d):
+        """The reference image for fixture dir `d`, (3, S, S) float in [0, 1]."""
+        if self.ref_source == "frontal_albedo":
+            return self._img(os.path.join(d, "render_cond", "000.png"))
+        path = os.path.join(self.thumbnail_dir, os.path.basename(d.rstrip("/")) + ".png")
+        pil = Image.open(path)
+        # load_image handles L / RGB / RGBA; anything else (palette, CMYK) is normalised to RGB
+        # first so it cannot index a missing channel axis.
+        if pil.mode not in ("RGB", "RGBA"):
+            pil = pil.convert("RGB")
+        bg = self._draw_bg_color()
+        image, _alpha = self.load_image(pil, bg)
+        if self.augment_ref:
+            image = self.augment_image(image, bg)
+        return image
+
     def _load(self, i):
-        """Load one example. Raises if any of its 37 PNGs is missing or undecodable."""
+        """Load one example. Raises if any of its PNGs (36 views + the reference) is missing or undecodable."""
         d = self.dirs[i]
         views = range(self.num_view)
         out = {
             f"images_{k}": torch.stack([self._img(os.path.join(d, "render_tex", f"{v:03d}_{s}.png")) for v in views])
             for k, s in self.maps
         }
-        ref = self._img(os.path.join(d, "render_cond", "000.png"))
+        ref = self._ref(d)
         out["images_cond"] = torch.stack([ref, ref])
         out["name"] = d
         return out
