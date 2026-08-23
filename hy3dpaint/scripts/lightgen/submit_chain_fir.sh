@@ -58,7 +58,11 @@ if [ -n "${2:-}" ]; then
 else
     echo "[chain] NEW run LIGHTGEN_RUN_TS=$TS"
 fi
-echo "[chain] $N x 24h segments from $SBATCH_FILE"
+# Read the wall time out of the .sbatch rather than hardcoding "24h": this driver is used by
+# several campaigns now and the thumb-agentic one runs 48 h segments, so a fixed string here
+# would misreport what was just queued.
+SEG_TIME=$(awk -F= '/^#SBATCH[[:space:]]+--time=/{print $2; exit}' "$SBATCH_FILE")
+echo "[chain] $N x ${SEG_TIME:-?} segments from $SBATCH_FILE"
 
 dep=""
 ids=()
