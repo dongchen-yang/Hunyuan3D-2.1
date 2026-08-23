@@ -26,7 +26,10 @@ Assertions (all hard; any failure aborts before a file is written):
   A5  train json is disjoint from val64
   A6  train json is disjoint from the full val split and the full test split
   A7  every directory named in either JSON exists under the root and holds the full 37-PNG +
-      transforms.json payload, each as a regular file of nonzero size
+      transforms.json payload, each as a regular file of nonzero size; and, when
+      --thumbnail_dir is given, <thumbnail_dir>/<sha>.png is a regular nonzero-size file for
+      every listed sha (the thumbnail-reference runs -- spec 2026-08-23 -- fail here, at JSON
+      build, rather than at the first training batch)
 
 A5 and A6 are implied by A0+A1+A2 as the code stands (train_kept is a subset of the train list).
 They are kept because they check the *constructed output* rather than the inputs, so they stay
@@ -42,6 +45,7 @@ Run it on the node that will train, so A3/A7 look at the real staged filesystem:
         --test_shas   /localscratch/dya78/lightgen_mvpaint/v2_shas/v2_test_shas.txt \
         --val64_shas  scripts/lightgen/val64_v2_shas.txt \
         --fixture_root /localscratch/dya78/lightgen_mvpaint/mv74k \
+        --thumbnail_dir /localscratch/dya78/lightgen_mvpaint/thumbnails \   # thumbnail-reference runs only
         --out_train   /localscratch/dya78/lightgen_mvpaint/mv74k_train.json \
         --out_val64   /localscratch/dya78/lightgen_mvpaint/mv74k_val64.json \
         --expect_train 71645 \
@@ -53,6 +57,7 @@ import hashlib
 import json
 import os
 import re
+import stat
 import sys
 
 SHA_RE = re.compile(r"^[0-9a-f]{32}$")
@@ -126,6 +131,25 @@ def dir_payload_ok(d):
             or _regular_nonempty(os.path.join(d, "render_cond"), EXPECT_COND))
 
 
+def thumbnail_ok(thumbnail_dir, d):
+    """None if <thumbnail_dir>/<sha>.png is a regular nonzero-size file, else a reason string.
+
+    A direct stat, not _regular_nonempty: that helper scandirs the whole directory per call,
+    and the thumbnail store holds 80,735 files -- 36k x scandir(80k) is not a gate, it is a
+    stall. stat() follows symlinks, as the loader's open() will.
+    """
+    p = os.path.join(thumbnail_dir, os.path.basename(d.rstrip("/")) + ".png")
+    try:
+        st = os.stat(p)
+    except OSError as e:
+        return f"{p}: {e.strerror or e}"
+    if not stat.S_ISREG(st.st_mode):
+        return f"{p} is not a regular file"
+    if st.st_size == 0:
+        return f"{p} is zero bytes"
+    return None
+
+
 def sha256_file(path):
     h = hashlib.sha256()
     with open(path, "rb") as f:
@@ -150,11 +174,16 @@ def main():
     ap.add_argument("--max_allow_missing", type=int, default=1,
                     help="ceiling on --allow_missing (default 1). Raising it is the explicit, "
                          "logged act of deciding that more than one shape may be dropped.")
+    ap.add_argument("--thumbnail_dir", default=None,
+                    help="thumbnail-reference runs only: directory of <sha>.png; A7 then also "
+                         "requires one regular nonzero-size thumbnail per listed sha")
     args = ap.parse_args()
 
     root = args.fixture_root.rstrip("/")
     if not os.path.isdir(root):
         fail(f"--fixture_root {root} is not a directory")
+    if args.thumbnail_dir is not None and not os.path.isdir(args.thumbnail_dir):
+        fail(f"--thumbnail_dir {args.thumbnail_dir} is not a directory")
 
     # ---- A0: every list entry is a bare sha (read_shas aborts otherwise) ------------------
     train = read_shas(args.train_shas)
@@ -226,7 +255,8 @@ def main():
         if not os.path.isdir(d):
             bad.append((d, "not a directory"))
         else:
-            why = dir_payload_ok(d)
+            why = dir_payload_ok(d) or (thumbnail_ok(args.thumbnail_dir, d)
+                                        if args.thumbnail_dir is not None else None)
             if why:
                 bad.append((d, why))
     if bad:
@@ -234,7 +264,8 @@ def main():
             print(f"  {d}: {why}", file=sys.stderr)
         fail(f"A7: {len(bad)} of {len(train_dirs) + len(val64_dirs)} listed dirs are missing or incomplete")
     ok(f"A7 all {len(train_dirs) + len(val64_dirs)} listed dirs exist and hold 36 render_tex PNGs "
-       f"+ transforms.json + render_cond/000.png, each a regular nonempty file")
+       f"+ transforms.json + render_cond/000.png, each a regular nonempty file"
+       + (f", plus a regular nonempty thumbnail under {args.thumbnail_dir}" if args.thumbnail_dir else ""))
 
     # ---- write ---------------------------------------------------------------------------
     for path, dirs in ((args.out_train, train_dirs), (args.out_val64, val64_dirs)):
