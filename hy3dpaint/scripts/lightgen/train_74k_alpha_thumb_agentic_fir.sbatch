@@ -55,19 +55,33 @@
 # with only "Requested node configuration is not available" as a hint. --mem=0 means "all the
 # memory on the node" and is immune to RealMemory changing under us.
 #
-# WALL TIME 48 h, TWO segments -- deliberately NOT the sibling's 4 x 24 h. Measured
-# 2026-08-23 with sbatch --test-only: the 24 h, 48 h and 72 h asks all returned the SAME start
-# slot, so the longer tier costs nothing today, and 50,000 steps needs only ~48 h (25,000
-# steps fitted in one 24 h segment on fc10414). Two 48 h segments means ONE boundary instead
-# of three, and boundaries are this chain's known failure mode: every previous fir mvpaint
-# chain lost its follow-on segments (54936253-5 died in 7/5/5 min, 55531929-31 in 4/4/4 min).
-# Those had two identified causes, both now gated or fixed -- a leaked process holding 68.93
-# GiB on fc10218's GPU 0 (the GPU gate below exits in seconds and names the card; resubmit
-# with --exclude=fc10218) and wandb-core missing its 30 s port-file deadline (WANDB_SERVICE_WAIT
-# below) -- but taking fewer boundaries is still the cheapest mitigation.
+# WALL TIME 24 h, THREE segments -- REVISED 2026-08-23 16:20 after measurement, see below.
+#
+# The first submission asked 48 h and landed in gpubase_bynode_b4, where it sat PENDING with
+# "Nodes required for job are DOWN, DRAINED or reserved for jobs in higher priority
+# partitions" and an estimate that drifted 02:21 -> 03:00 -> 02:49 -> 03:30 without improving.
+# Re-measured with sbatch --test-only at 16:19 that day:
+#     --time=24:00:00 -> gpubase_bynode_b3, start 16:41 (22 minutes out)
+#     --time=48:00:00 -> gpubase_bynode_b4, start 18:45
+#     --time=72:00:00 -> gpubase_bynode_b4, start 18:45
+# b3 is backed by 90 nodes against b4's 60, and the b4 reservation is structural -- waiting
+# does not clear it. An earlier probe (a few hours before) had all three tiers returning the
+# SAME slot, which is why the first submission took the longer tier; that stopped being true.
+# NOTE: `scontrol update TimeLimit=` does NOT re-route an already-queued job -- Slurm picks the
+# partition at submit time -- so switching tiers requires scancel + resubmit. Verified.
+#
+# 50,000 steps at fir's measured effective 3.46 s/step (25,000 banked in one 24 h segment on
+# fc10414) is ~48 h = TWO full 24 h segments; three are queued so the last one absorbs the
+# per-segment staging (~10-20 min of extract) and any slow validation. That is two boundaries
+# instead of the 48 h plan's one -- accepted for an ~11 h earlier start, because both known
+# causes of this chain's historical boundary failures are now gated or fixed: a leaked process
+# holding 68.93 GiB on fc10218's GPU 0 (the GPU gate below exits in seconds naming the card;
+# resubmit with --exclude=fc10218) and wandb-core missing its 30 s port-file deadline
+# (WANDB_SERVICE_WAIT below). The venus-05 chain of the previous campaign resumed correctly
+# across its boundary (247612 TIMEOUT -> 248375 COMPLETED), so the resume path itself is sound.
 #SBATCH --account=rrg-msavva_gpu
 #SBATCH --job-name=mvpaint_74k_alpha_thumb_agentic
-#SBATCH --time=48:00:00
+#SBATCH --time=24:00:00
 #SBATCH --nodes=1
 #SBATCH --ntasks-per-node=1
 #SBATCH --cpus-per-task=48

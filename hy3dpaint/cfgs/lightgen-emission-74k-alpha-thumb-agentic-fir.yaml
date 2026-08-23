@@ -37,13 +37,14 @@
 # 36,255. Checkpoints are selected on the validation split (val64 during training; the 381
 # val shapes by trough ranking after).
 #
-# SEGMENTS. fir measured 3.80 s/step (smoke 54935398) and the _nonzero_nocopy fir segment 1
-# banked 25,000 steps in one 24 h wall clock (3.46 s/step effective, validations included),
-# so 50,000 steps is ~48 h. --test-only showed 24 h, 48 h and 72 h asks ALL returning the same
-# start slot today, so this campaign queues 2 x 48:00:00 rather than 4 x 24:00:00: same start
-# time, but ONE segment boundary instead of three. That matters here -- every previous fir
-# mvpaint chain lost its follow-on segments (s2/s3/s4 died within minutes), so each boundary
-# not taken is a failure mode not risked.
+# SEGMENTS: 3 x 24:00:00 (revised 2026-08-23 16:20 -- the first submission asked 2 x 48 h).
+# fir measured 3.80 s/step (smoke 54935398) and the _nonzero_nocopy fir segment 1 banked
+# 25,000 steps in one 24 h wall clock (3.46 s/step effective, validations included), so 50,000
+# steps is ~48 h = two full segments, with a third queued to absorb per-segment staging.
+# The tier choice is a QUEUE decision, not a throughput one: --time=24:00:00 routes to
+# gpubase_bynode_b3 (90 nodes) while 48/72 h route to b4 (60 nodes), and on the afternoon of
+# 2026-08-23 that was an ~11 h difference in start time (b3 16:41 vs b4 18:45, against a
+# 48 h job already queued in b4 and estimated 03:30 the next day). See the launcher header.
 #
 # Campaign: lightgen docs/superpowers/specs/2026-08-22-agentic-filtered-baselines-retrain-design.md
 # (Hunyuan lane, amended 2026-08-23). Launcher: scripts/lightgen/train_74k_alpha_thumb_agentic_fir.sbatch
