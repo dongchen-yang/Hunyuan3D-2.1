@@ -83,6 +83,22 @@ else
 fi
 
 # --- gates --------------------------------------------------------------------------------
+# CROSS-SITE MUTEX (added 2026-08-23, when this run was ALSO queued on fir as the primary).
+# The same run training on two clusters at once would burn a second allocation and produce two
+# divergent checkpoint lineages under one name. fir cannot see jupiter, but every Solar node
+# can -- so the lock lives here and this, the STANDBY chain, is the side that yields.
+# The workstation creates the file when the fir chain actually starts RUNNING and removes it
+# if fir dies; an absent file therefore means "fir is not training", which is exactly when
+# this chain should be allowed to take the node.
+FIR_LOCK="$J/outputs/$RUN/.RUNNING_ON_FIR"
+if [ -f "$FIR_LOCK" ]; then
+    echo "ABORT: the same run is training on fir -- standing down. $FIR_LOCK says:"
+    cat "$FIR_LOCK" 2>/dev/null || true
+    echo "       If fir has genuinely failed, delete that file from the workstation and resubmit."
+    exit 6
+fi
+echo "[gate] no fir lock at $FIR_LOCK -- this chain may proceed"
+
 [ "$AGENTIC_MD5" != "FILL_ME_FROM_TASK_7" ] || { echo "ABORT: AGENTIC_MD5 not filled in (plan Task 7)"; exit 2; }
 [ -d /localscratch/dya78/miniconda3/envs/hunyuanpaint ] || { echo "ABORT: no hunyuanpaint env"; exit 2; }
 [ -d "$J" ] || { echo "ABORT: jupiter not mounted at $J"; exit 2; }
