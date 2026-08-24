@@ -1,0 +1,165 @@
+# lightgen: pbr->emission multiview fine-tune WITH alpha, on the _agentic training split
+# (36,255 shapes), REFERENCE IMAGE = the TexVerse thumbnail -- FIR, CROSS-ACCOUNT (Xingguang's
+# rrg-angelx_gpu, not rrg-msavva_gpu). A FRESH run (no resume seed), independent lineage from
+# the dya78/rrg-msavva_gpu fir chain (56432310-12) and the (dead) cs-venus-05 standby.
+#
+# WHY THIS SITE (2026-08-23/24, Dongchen's call): "不要管fir和solar了，我们就在fir-xg跑" -- the
+# dya78/rrg-msavva fir chain sat PENDING (Priority) with no start in sight, and the cs-venus-05
+# standby died silently seconds after each submission (sbatch --export=... on star2 is killed
+# as CANCELLED by 0 -- see cluster-access skill references/star2/allocation.md; unrelated to
+# this recipe, but it means that path was never a real fallback). rrg-angelx_gpu's fair-share
+# priority is ~2.6M vs rrg-msavva_gpu's ~1.9M (measured for the TEXGen xg lane, same accounts),
+# so submitting under xya120's account starts materially sooner. See
+# docs/status/checkpoints.md "the fir cross-site run (collaborator account)" for the TEXGen
+# precedent this lane copies.
+#
+# Twin of cfgs/lightgen-emission-74k-alpha-thumb-agentic-fir.yaml. ONLY the four
+# /scratch/dya78/lightgen_mvpaint -> /scratch/xya120/lightgen_mvpaint paths that must be
+# WRITABLE by the training job change (two thumbnail_dir, two json_path) -- everything the job
+# only READS stays pointed at dya78's copy, now group-shared (chgrp rrg-msavva + chmod g+rX,
+# 2026-08-23; both users are members of rrg-msavva, same plumbing the TEXGen xg lane used):
+#   - stable_diffusion_config.pretrained_model_name_or_path (HF snapshot, read-only) -- UNCHANGED
+#   - the venv the launcher activates (torch/pytorch_lightning/cv2, read-only) -- not a config
+#     path, but the same sharing; see the launcher
+#   - the fixture tars and agentic_train_shas.txt (already group rrg-msavva since they were
+#     staged to the shared /project space and /scratch/dya78/lightgen_mvpaint/v2_shas) -- not
+#     config paths either, see the launcher
+# model: and lightning: parameter VALUES are identical to every other site's config in this
+# campaign (verified with OmegaConf.to_container equality, the same check Task 4 Step 2 of
+# the plan uses) -- comments differ, so this file is not a byte-for-byte copy of the fir twin.
+#
+# Reference image = <thumbnail_dir>/<sha>.png, the TexVerse thumbnail TEXGen (CLIP) and
+# TRELLIS.2 (DINOv3) condition on, loaded through upstream's own BaseDataset.load_image and
+# (train only) BaseDataset.augment_image. No fallback to render_cond. Spec: lightgen
+# docs/superpowers/specs/2026-08-23-hunyuan3d-paint-thumbnail-reference-design.md
+#
+# thumbnail_dir is a symlink here (as on the dya78/fir twin), not a real directory: xya120's
+# /scratch also has a finite inode budget and 80,735 thumbnail PNGs belong in $SLURM_TMPDIR
+# (node-local, wiped per job). The launcher repoints
+#   /scratch/xya120/lightgen_mvpaint/thumbnails -> $SLURM_TMPDIR/emissive_thumbnails
+# as an ABSOLUTE symlink every job, so this config's path stays static.
+#
+# Everything else -- model block (24-channel conv_in, use_alpha), LR 7e-5, bs4 x 4 GPUs =
+# global 16, 50,000 steps, checkpoint/validation every 1,250, trough checkpointer every
+# 10,000 -- is unchanged; read the venus-05 twin's header for the sizing and learning-rate
+# reasoning. Equal optimizer steps, NOT equal epochs: 50,000 x 16 = 800k shape-visits = ~22
+# epochs of 36,255. Checkpoints are selected on the validation split (val64 during training;
+# the 381 val shapes by trough ranking after).
+#
+# Campaign: lightgen docs/superpowers/specs/2026-08-22-agentic-filtered-baselines-retrain-design.md
+# (Hunyuan lane, amended 2026-08-23). Launcher: scripts/lightgen/train_74k_alpha_thumb_agentic_fir_xg.sbatch
+
+model:
+  base_learning_rate: 7.0e-05
+  target: hunyuanpaintpbr.model_emission.HunyuanPaintEmission
+  params:
+    num_view: 6
+    view_size: 512
+    drop_cond_prob: 0.1
+    val_num_inference_steps: 30
+    gradient_checkpointing: true
+
+    # 4 noisy emission + 4 normal + 4 position + 4 albedo + 4 mr + 4 alpha.
+    # train.py expands conv_in from the pretrained 12 to this, zero-initialising 12-23 to
+    # match the append order in hunyuanpaintpbr/unet/modules.py (_PBR_STACK).
+    use_alpha: true
+    noise_in_channels: 24
+
+    stable_diffusion_config:
+      # dya78's snapshot, now group-readable (rrg-msavva) -- xya120 does NOT need their own
+      # copy of the pinned Hunyuan3D-2.1 weights. Same revision as every other site in this
+      # campaign: 0b94677654c57bb9a6b6845cd7b704ccf551d327.
+      pretrained_model_name_or_path: /scratch/dya78/lightgen_mvpaint/hf_home/hub/models--tencent--Hunyuan3D-2.1/snapshots/0b94677654c57bb9a6b6845cd7b704ccf551d327/hunyuan3d-paintpbr-v2-1
+      custom_pipeline: ./hunyuanpaintpbr
+
+data:
+  target: src.data.objaverse_hunyuan.DataModuleFromConfig
+  params:
+    # Per GPU. 4 GPUs x accumulate_grad_batches 1 -> global batch 16.
+    batch_size: 4
+    # 48 CPUs / 4 DDP ranks = 12 per rank; 10 loader workers leaves 2 for the rank's own
+    # process. Each worker decodes 37 PNGs per example plus the thumbnail (and augments it).
+    num_workers: 10
+    train:
+      -
+        target: src.data.dataloader.lightgen_emission_loader.LightgenEmissionDataset
+        params:
+          num_view: 6
+          use_alpha: true
+          # Reference = TexVerse thumbnail <thumbnail_dir>/<sha>.png via upstream load_image,
+          # then upstream augment_image (identity p=0.5; rotation/scale/translation/
+          # perspective; fill = the drawn gray/black/white background). The sbatch extracts
+          # the SAME thumbnails_emissive.tar dya78 staged (group-shared, not re-pushed) to
+          # $SLURM_TMPDIR and points $ROOT/thumbnails at it (absolute symlink, see the
+          # header); make_74k_jsons.py --thumbnail_dir proves every listed sha has one before
+          # a batch is touched. No fallback: a missing thumbnail is a bad example, fatal
+          # after three distinct ones.
+          ref_source: thumbnail
+          thumbnail_dir: /scratch/xya120/lightgen_mvpaint/thumbnails
+          augment_ref: true
+          # Regenerated INSIDE the job by make_74k_jsons.py, which writes the ABSOLUTE
+          # $SLURM_TMPDIR/mv74k fixture paths of THIS job -- that is why it is rebuilt every
+          # segment rather than staged once. Built from the SAME agentic_train_shas.txt dya78
+          # pinned (36,255; --expect_train 36255, NO --allow_missing -- the unrenderable sha
+          # is already absent from the list) with --thumbnail_dir; A7 is the proof the
+          # fixture and the thumbnails are both staged whole.
+          json_path: /scratch/xya120/lightgen_mvpaint/mv74k_train_agentic.json
+    validation:
+      -
+        target: src.data.dataloader.lightgen_emission_loader.LightgenEmissionDataset
+        params:
+          num_view: 6
+          use_alpha: true
+          # Same reference source, NO augmentation: val/emission_mse must compare checkpoints
+          # on identical inputs.
+          ref_source: thumbnail
+          thumbnail_dir: /scratch/xya120/lightgen_mvpaint/thumbnails
+          augment_ref: false
+          json_path: /scratch/xya120/lightgen_mvpaint/mv74k_val64.json
+
+lightning:
+  modelcheckpoint:
+    params:
+      # 1250, not 2500, because the campaign runs in 24-HOUR segments. Whatever has happened
+      # since the last `last.ckpt` write is lost when SLURM kills the job at the wall clock,
+      # so the checkpoint interval is a direct tax on every segment boundary. At the MEASURED
+      # 3.80 s/step, 2500 would risk 2.6 h of a 24 h segment (11%); 1250 risks 1.3 h (5.5%).
+      every_n_train_steps: 1250
+      # save_last is what makes a requeue survivable: the resume path reads last.ckpt from
+      # the LIGHTGEN_RUN_TS-stamped logdir. save_top_k selects on sampled-emission quality,
+      # a pixel MSE of the fully sampled views vs GT -- not the v-prediction training loss.
+      save_top_k: 3
+      monitor: 'val/emission_mse'
+      mode: min
+      save_last: true
+  # Unconditional saves at the LR-cycle troughs (warm_up_step 1000 + T_step 9000 = a
+  # 10,000-step cycle, see configure_optimizers). The main callback above cannot be relied on
+  # for these: with save_top_k=3 + a monitor, a step that would not enter the top-k is never
+  # WRITTEN, so trough 20,000 of this campaign never existed on disk and no watcher could
+  # have saved it. These are the checkpoints the real point-sampled evaluator will choose
+  # between, because val/emission_mse is too noisy to select on.
+  trough_checkpoint:
+    every_n_train_steps: 10000
+  callbacks: {}
+
+  trainer:
+    benchmark: true
+    max_steps: 50000
+    gradient_clip_val: 1.0
+    accumulate_grad_batches: 1
+    # pytorch-lightning counts val_check_interval in TRAINING BATCHES while max_steps and
+    # every_n_train_steps count OPTIMISER STEPS. With accumulate_grad_batches 1 those are
+    # the same thing here.
+    #
+    # KEPT EQUAL TO every_n_train_steps ON PURPOSE. It is tempting to checkpoint often (crash
+    # safety) while validating rarely (cost), but that quietly corrupts checkpoint SELECTION:
+    # `val/emission_mse` persists in `callback_metrics` between validations, so a checkpoint
+    # written at a non-validation step is ranked with the PREVIOUS validation's score and can
+    # take a top_k slot it did not earn.
+    #
+    # 1250 gives 40 validations over the 50k-step campaign -- the same number every other
+    # site's run does, so validation overhead is a known quantity rather than a new variable.
+    val_check_interval: 1250
+    num_sanity_val_steps: 0
+    check_val_every_n_epoch: null   # if not set, validation does not run
+    # `devices` is not set here: train.py overwrites it from --gpus (0,1,2,3 -> 4).
