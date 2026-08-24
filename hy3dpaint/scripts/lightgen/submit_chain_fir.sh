@@ -49,6 +49,13 @@ set -euo pipefail
 N=${1:-4}
 SBATCH_FILE="${TRAIN_SBATCH:-$(dirname "$0")/train_74k_alpha_fir.sbatch}"
 JOB_PREFIX="${JOB_PREFIX:-mvpaint_alpha}"
+# Comma-separated node(s) to exclude, e.g. EXCLUDE=fc10218. fc10218 has repeatedly left a
+# leaked process resident on GPU0 (68-70 GiB) across multiple chains on multiple accounts
+# (55531930/31 2026-08-20, 56536701-703 2026-08-24) -- each launcher's own GPU-occupancy gate
+# catches it in seconds, but a chain that keeps landing back on the same bad node just burns
+# the same seconds N times. Empty by default; unset entirely, not passed as --exclude=, when
+# EXCLUDE is empty, so a plain `sbatch` call is unaffected.
+EXCLUDE="${EXCLUDE:-}"
 [ -f "$SBATCH_FILE" ] || { echo "ABORT: $SBATCH_FILE not found"; exit 1; }
 
 # Second argument continues an existing campaign; without it a new stamp starts a new run.
@@ -71,6 +78,7 @@ for i in $(seq 1 "$N"); do
     out=$(sbatch --parsable $dep \
                  --export=ALL,LIGHTGEN_RUN_TS="$TS" \
                  --job-name="${JOB_PREFIX}_s$i" \
+                 ${EXCLUDE:+--exclude="$EXCLUDE"} \
                  "$SBATCH_FILE")
     jid=${out%%;*}
     ids+=("$jid")
