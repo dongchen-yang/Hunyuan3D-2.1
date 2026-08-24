@@ -42,9 +42,12 @@
 #   * ROOT is xya120's own /scratch/xya120/lightgen_mvpaint (code clone, logs, generated
 #     JSONs, the thumbnails symlink) -- everything WRITABLE by the job.
 #   * VENV and SHAS point at dya78's shared copies instead of living under $ROOT.
-#   * TARS is dya78's absolute home path (/home/dya78/projects/...), not `~/projects/...` --
-#     `~` would resolve to xya120's OWN home when this script runs as xya120, which holds
-#     nothing.
+#   * TARS is the real /project/<gid> path, not `~/projects/rrg-msavva/...` and not dya78's
+#     /home/dya78/projects/... symlink route either -- `~` would resolve to xya120's OWN home
+#     (which holds nothing), and /home/dya78 itself is drwxr-x--- group `dya78` (dya78's own
+#     private group), so xya120 cannot even traverse INTO the symlink that route depends on.
+#     Found live: job 56538328's first real attempt aborted with "found 0 fixture tars" for
+#     exactly this reason. /project/6049211 itself is drwxrws--- rrg-msavva -- go there directly.
 #   * job-name carries an _xg suffix so squeue/sacct never conflate this with the dya78 chain.
 #   * RUN keeps the SAME string ('mvpaint_pbr->emission_74k_v2_alpha_thumb_agentic') on
 #     purpose -- once the dya78 chain is cancelled (per the precedent above) this becomes the
@@ -81,7 +84,14 @@ set -euo pipefail
 ROOT=/scratch/xya120/lightgen_mvpaint
 VENV=/scratch/dya78/lightgen_mvpaint/env
 SHAS=/scratch/dya78/lightgen_mvpaint/v2_shas
-TARS=/home/dya78/projects/rrg-msavva/dya78/lightgen_mv74k_alpha
+# NOT /home/dya78/projects/rrg-msavva/... : that route requires traversing /home/dya78 itself,
+# which is drwxr-x--- group `dya78` (dya78's own private group, not rrg-msavva) -- xya120 gets
+# the "other" bits there, i.e. nothing, regardless of what the symlink inside points at.
+# Confirmed 2026-08-24 (job 56538328's ABORT: 0 fixture tars found): the REAL absolute target
+# of ~dya78/projects/rrg-msavva is /project/6049211 (drwxrws--- rrg-msavva) and
+# /project/6049211/dya78 (drwxr-s--- rrg-msavva) -- both properly group-shared. Use that path
+# directly so nothing depends on dya78's home directory.
+TARS=/project/6049211/dya78/lightgen_mv74k_alpha
 CFG=cfgs/lightgen-emission-74k-alpha-thumb-agentic-fir-xg.yaml
 NAME=74k_alpha_thumb_agentic_fir_xg
 RUN='mvpaint_pbr->emission_74k_v2_alpha_thumb_agentic'
