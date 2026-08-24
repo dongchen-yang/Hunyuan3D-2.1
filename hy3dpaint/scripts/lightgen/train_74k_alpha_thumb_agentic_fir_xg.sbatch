@@ -21,13 +21,23 @@
 # confirmed training, per the same precedent ("dya78's own fir copy was cancelled once the
 # xya120 run was confirmed training").
 #
-# CROSS-ACCOUNT PLUMBING (2026-08-23, this session): everything the job only READS stays
+# CROSS-ACCOUNT PLUMBING (2026-08-23/24, this session): everything the job only READS stays
 # pointed at dya78's fir storage, now group-shared -- both users are in rrg-msavva:
 #   - venv       /scratch/dya78/lightgen_mvpaint/env        chgrp rrg-msavva + chmod g+rX
-#   - HF cache   /scratch/dya78/lightgen_mvpaint/hf_home    chgrp rrg-msavva + chmod g+rX
+#   - HF weights /scratch/dya78/lightgen_mvpaint/hf_home    chgrp rrg-msavva + chmod g+rX --
+#     but NOT $HF_HOME directly: diffusers' custom_pipeline loading writes into
+#     $HF_HOME/modules/ (see the HF_HOME export below), so xya120 needs $ROOT/hf_home/hub as
+#     a SYMLINK to dya78's hub/ (read-only reuse of the actual weights) with modules/ and
+#     everything else created fresh under $ROOT (writable). One-time setup, by hand:
+#       mkdir -p $ROOT/hf_home && ln -sfn /scratch/dya78/lightgen_mvpaint/hf_home/hub $ROOT/hf_home/hub
 #   - sha lists  /scratch/dya78/lightgen_mvpaint/v2_shas     chgrp rrg-msavva + chmod g+rX
-#   - fixture tars + thumbnail tar: already group rrg-msavva (staged straight to the shared
-#     /project space by the original launcher's PREREQUISITES).
+#   - fixture tars + thumbnail tar: /project/6049211/dya78/lightgen_mv74k_alpha, already group
+#     rrg-msavva (staged straight to the shared /project space by the original launcher's
+#     PREREQUISITES) -- go through the REAL /project path, not dya78's ~/projects/rrg-msavva
+#     symlink: that route requires traversing /home/dya78 itself, which is drwxr-x--- group
+#     `dya78` (dya78's own private group), so xya120 cannot get through it regardless of what
+#     the symlink inside points at. Found live: job 56538328 aborted with "found 0 fixture
+#     tars" for exactly this reason before this was corrected.
 # Verified interactively before this launcher was written: xya120 can `ls`/`stat` into all of
 # the above, and `source $VENV/bin/activate && python -c "import torch, pytorch_lightning,
 # cv2"` printed 2.11.0 / 1.9.5 / 4.12.0 with no import error -- the shared venv's shared
@@ -123,7 +133,8 @@ echo "[gate] all 4 GPUs clean"
 [ -d "$VENV" ] || { echo "ABORT: no shared venv at $VENV -- has dya78 chgrp'd it to rrg-msavva?"; exit 2; }
 [ -d "$ROOT/Hunyuan3D-2.1-emissive" ] || { echo "ABORT: no code clone at $ROOT/Hunyuan3D-2.1-emissive -- git clone -b lightgen it first"; exit 2; }
 [ -d "$SNAP" ] || { echo "ABORT: pinned HF snapshot missing at $SNAP -- is dya78's hf_home chgrp'd to rrg-msavva?"; exit 2; }
-[ -d "/scratch/dya78/lightgen_mvpaint/hf_home/hub/models--facebook--dinov2-giant" ] || { echo "ABORT: dinov2-giant snapshot missing"; exit 2; }
+[ -L "$ROOT/hf_home/hub" ] || { echo "ABORT: $ROOT/hf_home/hub is not a symlink -- run: mkdir -p $ROOT/hf_home && ln -sfn /scratch/dya78/lightgen_mvpaint/hf_home/hub $ROOT/hf_home/hub (once, by hand; see the header)"; exit 2; }
+[ -d "$ROOT/hf_home/hub/models--facebook--dinov2-giant" ] || { echo "ABORT: dinov2-giant snapshot missing (via $ROOT/hf_home/hub symlink)"; exit 2; }
 for f in agentic_train_shas.txt v2_val_shas.txt v2_test_shas.txt; do
     [ -s "$SHAS/$f" ] || { echo "ABORT: missing $SHAS/$f -- is dya78's v2_shas chgrp'd to rrg-msavva?"; exit 2; }
 done
@@ -158,7 +169,16 @@ CFG_SNAP=$(awk -F': *' '/^[[:space:]]*pretrained_model_name_or_path:/ {print $2;
 module load StdEnv/2023 python/3.12 cuda/12.6 opencv/4.12.0
 source "$VENV/bin/activate"
 export PYTHONNOUSERSITE=1
-export HF_HOME=/scratch/dya78/lightgen_mvpaint/hf_home
+# $ROOT/hf_home is xya120's OWN directory, not dya78's directly: diffusers' custom_pipeline
+# loading (config's stable_diffusion_config.custom_pipeline) COPIES the pipeline .py into
+# $HF_HOME/modules/diffusers_modules/local/ at every from_pretrained call -- a write, not a
+# read. Found live: job 56538612 passed every gate, extracted correctly, started train.py, and
+# only then died with "PermissionError: ... hf_home/modules/diffusers_modules/local/
+# pipeline.py" because HF_HOME pointed straight at dya78's read-only-shared tree. Fix: give
+# xya120 their own $ROOT/hf_home with hub/ SYMLINKED to dya78's shared hub/ (the actual model
+# weights, read-only reuse -- no re-download) while modules/ and everything else diffusers
+# creates land natively, writable, under $ROOT.
+export HF_HOME=$ROOT/hf_home
 export HF_HUB_OFFLINE=1
 export TRANSFORMERS_OFFLINE=1
 
