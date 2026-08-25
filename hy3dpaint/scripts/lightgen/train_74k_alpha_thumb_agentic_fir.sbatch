@@ -205,25 +205,6 @@ cd hy3dpaint
 CFG_SNAP=$(awk -F': *' '/^[[:space:]]*pretrained_model_name_or_path:/ {print $2; exit}' "$CFG")
 [ "$CFG_SNAP" = "$SNAP" ] || { echo "ABORT: $CFG names snapshot '$CFG_SNAP', but the gate checked '$SNAP'"; exit 2; }
 
-# cv2 PREFLIGHT. The thumbnail-reference loader imports loader_util for upstream's
-# load_image/augment_image, and loader_util does `import cv2`. fir's venv did NOT have it
-# (found 2026-08-23 -- no earlier fir run imported loader_util, and Alliance's wheelhouse
-# ships an opencv-noinstall shim so pip fails by design); it is supplied by the opencv module
-# loaded above plus a _alliance_opencv.pth in the venv. Verify the LOADER ITSELF imports --
-# after git pull, so it tests the code that will run, and before the extracts, so a miss
-# costs seconds instead of 85 GB of staging.
-python - <<'PYCHK' || { echo "ABORT: the training env cannot import the loader (traceback above)."; \
-  echo "       If it is cv2: check 'module load opencv/4.12.0' and the venv's _alliance_opencv.pth."; exit 2; }
-import sys
-sys.path.insert(0, ".")
-from src.data.dataloader.lightgen_emission_loader import LightgenEmissionDataset as D
-assert D.REF_SOURCES == ("frontal_albedo", "thumbnail"), D.REF_SOURCES
-import cv2, numpy as np
-cv2.getPerspectiveTransform(np.float32([[0,0],[8,0],[8,8],[0,8]]),
-                            np.float32([[1,1],[7,0],[8,7],[0,8]]))
-print(f"[gate] loader imports OK; cv2 {cv2.__version__}, numpy {np.__version__}")
-PYCHK
-
 # opencv is REQUIRED as of the thumbnail-reference loader: it imports loader_util for
 # BaseDataset.load_image/augment_image, and loader_util imports cv2 (augment_image's
 # perspective branch calls cv2.getPerspectiveTransform/warpPerspective). fir's venv does NOT
@@ -242,6 +223,33 @@ export HF_HOME=$ROOT/hf_home
 # metadata call and dies with a connection error instead of using the staged snapshot.
 export HF_HUB_OFFLINE=1
 export TRANSFORMERS_OFFLINE=1
+
+# cv2 PREFLIGHT. The thumbnail-reference loader imports loader_util for upstream's
+# load_image/augment_image, and loader_util does `import cv2`. fir's venv did NOT have it
+# (found 2026-08-23 -- no earlier fir run imported loader_util, and Alliance's wheelhouse
+# ships an opencv-noinstall shim so pip fails by design); it is supplied by the opencv module
+# loaded above plus a _alliance_opencv.pth in the venv. Verify the LOADER ITSELF imports --
+# after git pull, so it tests the code that will run, and before the extracts, so a miss
+# costs seconds instead of 85 GB of staging.
+#
+# ‼️ THIS MUST RUN **AFTER** `module load` + `source env/bin/activate` + PYTHONNOUSERSITE=1.
+# It originally sat above them, and job 56750691 (2026-08-25, the first time this launcher ever
+# actually reached a node) died here in 6 s: the bare `python` was the login default 3.11, which
+# picked up a BROKEN numpy from /home/dya78/.local/lib/python3.11/site-packages
+# (ModuleNotFoundError: No module named 'numpy._utils') instead of the venv's 3.12 numpy 1.26.4.
+# The gate was testing an interpreter the training never uses. The fir-xg twin was written with
+# the activation first and never hit this.
+python - <<'PYCHK' || { echo "ABORT: the training env cannot import the loader (traceback above)."; \
+  echo "       If it is cv2: check 'module load opencv/4.12.0' and the venv's _alliance_opencv.pth."; exit 2; }
+import sys
+sys.path.insert(0, ".")
+from src.data.dataloader.lightgen_emission_loader import LightgenEmissionDataset as D
+assert D.REF_SOURCES == ("frontal_albedo", "thumbnail"), D.REF_SOURCES
+import cv2, numpy as np
+cv2.getPerspectiveTransform(np.float32([[0,0],[8,0],[8,8],[0,8]]),
+                            np.float32([[1,1],[7,0],[8,7],[0,8]]))
+print(f"[gate] loader imports OK; cv2 {cv2.__version__}, numpy {np.__version__}")
+PYCHK
 
 # --- stage the thumbnails to node-local NVMe, and repoint the config's static path ----------
 # FIRST, before the much larger fixture extract: these are the newly transferred, least-proven
