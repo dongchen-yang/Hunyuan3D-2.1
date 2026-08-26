@@ -258,6 +258,45 @@ echo "LIGHTGEN_RUN_TS=$LIGHTGEN_RUN_TS"
 
 mkdir -p logs
 LOGDIR="logs/lightgen-emission-74k-alpha-thumb-agentic-fir-xg-${NAME}-${LIGHTGEN_RUN_TS}"
+
+# --- cross-account continuation: adopt dya78's last.ckpt when it is ahead of ours ---------------
+# This stamp's lineage has been advanced from BOTH accounts. Segment 1 ran here (xya120) to step
+# 25,000; when its successor sat 16 h in the queue on 2026-08-25 the same segment was raced under
+# dya78/rrg-msavva_gpu and won, so steps 25,000+ accumulated in DYA78's scratch tree, not ours.
+# Each account's train.py resumes from ITS OWN $LOGDIR/checkpoints/last.ckpt (train.py:190-194),
+# so starting this launcher now without staging would silently resume from the stale step-25,000
+# file and redo tens of thousands of H100-steps in a separate directory -- no error, no warning.
+# `[fresh]`/`[resume]` below only PRINT; neither aborts. Hence this block, which is the guard.
+#
+# Adopting by mtime (not by parsing global_step) keeps it cheap: PL writes last.ckpt atomically
+# (temp + rename), so a copy is always a complete checkpoint, and the newer file is by
+# construction the further-advanced one. Missing/unreadable peer = leave ours alone; the peer only
+# exists while the two accounts are racing the same stamp, and a plain single-account run must not
+# be affected by it.
+# The peer's logdir name is spelled out, NOT built from $NAME: $NAME here is
+# `74k_alpha_thumb_agentic_fir_xg`, while the dya78 twin's is `74k_alpha_thumb_agentic_fir`, and
+# its cfg stem is `...-agentic-fir` (no `-xg`). Interpolating ours would point at a path that
+# never exists -- which fails OPEN (`no readable peer`), i.e. it would silently skip the guard.
+PEER_LOGDIR="/scratch/dya78/lightgen_mvpaint/Hunyuan3D-2.1-emissive/hy3dpaint/logs/lightgen-emission-74k-alpha-thumb-agentic-fir-74k_alpha_thumb_agentic_fir-${LIGHTGEN_RUN_TS}"
+PEER_LAST="$PEER_LOGDIR/checkpoints/last.ckpt"
+OUR_LAST="$LOGDIR/checkpoints/last.ckpt"
+if [ -r "$PEER_LAST" ]; then
+    if [ ! -f "$OUR_LAST" ] || [ "$PEER_LAST" -nt "$OUR_LAST" ]; then
+        echo "[adopt] peer last.ckpt is newer -- staging it over ours"
+        echo "[adopt]   peer: $(stat -c '%y  %s bytes' "$PEER_LAST")"
+        [ -f "$OUR_LAST" ] && echo "[adopt]   ours: $(stat -c '%y  %s bytes' "$OUR_LAST")"
+        mkdir -p "$LOGDIR/checkpoints"
+        # Copy to a temp name and rename, so an interrupted copy can never leave a torn last.ckpt.
+        cp "$PEER_LAST" "$OUR_LAST.adopting" && mv -f "$OUR_LAST.adopting" "$OUR_LAST" \
+            || { echo "ABORT: failed to stage peer last.ckpt"; exit 5; }
+        echo "[adopt] done: $(stat -c '%s bytes' "$OUR_LAST")"
+    else
+        echo "[adopt] ours is at least as new as the peer's -- keeping ours"
+    fi
+else
+    echo "[adopt] no readable peer last.ckpt at $PEER_LAST -- single-account run, nothing to stage"
+fi
+
 if [ -f "$LOGDIR/checkpoints/last.ckpt" ]; then
     echo "[resume] $LOGDIR/checkpoints/last.ckpt exists -- train.py auto-resumes from it"
 else
