@@ -278,9 +278,32 @@ LOGDIR="logs/lightgen-emission-74k-alpha-thumb-agentic-fir-xg-${NAME}-${LIGHTGEN
 # its cfg stem is `...-agentic-fir` (no `-xg`). Interpolating ours would point at a path that
 # never exists -- which fails OPEN (`no readable peer`), i.e. it would silently skip the guard.
 PEER_LOGDIR="/scratch/dya78/lightgen_mvpaint/Hunyuan3D-2.1-emissive/hy3dpaint/logs/lightgen-emission-74k-alpha-thumb-agentic-fir-74k_alpha_thumb_agentic_fir-${LIGHTGEN_RUN_TS}"
-PEER_LAST="$PEER_LOGDIR/checkpoints/last.ckpt"
+# --- PL's save_last versions around a last.ckpt it did not create ------------------------------
+# Measured 2026-08-26: because the dya78 segment was SEEDED with a last.ckpt copied from this
+# account, ModelCheckpoint would not overwrite it and has been writing `last-v1.ckpt` instead --
+# `last.ckpt` there is frozen at step 25,000 while training reached 40,000. Naming either side's
+# `last.ckpt` directly therefore picks a stale file on BOTH sides. Always resolve to the newest
+# `last*.ckpt` in a checkpoints dir; on our own side promote it in place (a rename, O(1)), on the
+# peer's side (read-only to us) just name the newest for the copy.
+newest_last() {   # $1 = checkpoints dir -> prints the newest last*.ckpt, or nothing
+    ls -1t "$1"/last.ckpt "$1"/last-v*.ckpt 2>/dev/null | head -1
+}
+promote_last() {  # $1 = checkpoints dir (must be writable by us)
+    local d="$1" newest
+    newest=$(newest_last "$d")
+    [ -n "$newest" ] || return 0
+    if [ "$newest" != "$d/last.ckpt" ]; then
+        echo "[promote] $(basename "$newest") is newer than last.ckpt -- promoting it"
+        mv -f "$newest" "$d/last.ckpt" || { echo "ABORT: could not promote $newest"; exit 6; }
+    fi
+}
+mkdir -p "$LOGDIR/checkpoints"
+promote_last "$LOGDIR/checkpoints"
+
+PEER_LAST=$(newest_last "$PEER_LOGDIR/checkpoints")
 OUR_LAST="$LOGDIR/checkpoints/last.ckpt"
-if [ -r "$PEER_LAST" ]; then
+if [ -n "$PEER_LAST" ] && [ -r "$PEER_LAST" ]; then
+    echo "[adopt] peer newest = $PEER_LAST"
     if [ ! -f "$OUR_LAST" ] || [ "$PEER_LAST" -nt "$OUR_LAST" ]; then
         echo "[adopt] peer last.ckpt is newer -- staging it over ours"
         echo "[adopt]   peer: $(stat -c '%y  %s bytes' "$PEER_LAST")"
@@ -294,7 +317,7 @@ if [ -r "$PEER_LAST" ]; then
         echo "[adopt] ours is at least as new as the peer's -- keeping ours"
     fi
 else
-    echo "[adopt] no readable peer last.ckpt at $PEER_LAST -- single-account run, nothing to stage"
+    echo "[adopt] no readable peer last*.ckpt under $PEER_LOGDIR/checkpoints -- single-account run, nothing to stage"
 fi
 
 if [ -f "$LOGDIR/checkpoints/last.ckpt" ]; then

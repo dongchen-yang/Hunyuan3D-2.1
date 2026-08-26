@@ -340,6 +340,30 @@ echo "LIGHTGEN_RUN_TS=$LIGHTGEN_RUN_TS"
 
 mkdir -p logs
 LOGDIR="logs/lightgen-emission-74k-alpha-thumb-agentic-fir-${NAME}-${LIGHTGEN_RUN_TS}"
+# --- PL's save_last versions around a last.ckpt it did not create ------------------------------
+# On 2026-08-25 this stamp was seeded with a last.ckpt copied in from the other account's tree, so
+# ModelCheckpoint refused to overwrite it and has been writing `last-v1.ckpt` ever since --
+# leaving `last.ckpt` frozen at step 25,000 while training reached 40,000. train.py:190-194 resumes
+# from `last.ckpt` BY NAME, so a successor segment would have silently restarted 15,000 steps back
+# and neither [resume] nor anything else would have said a word. Promote the newest last-v*.ckpt
+# before the resume check. `mv` is a rename within one directory: O(1), no 17 GB copy.
+promote_last() {
+    local d="$1" newest
+    [ -d "$d" ] || return 0
+    newest=$(ls -1t "$d"/last.ckpt "$d"/last-v*.ckpt 2>/dev/null | head -1)
+    [ -n "$newest" ] || return 0
+    if [ "$newest" != "$d/last.ckpt" ]; then
+        echo "[promote] $(basename "$newest") is newer than last.ckpt -- promoting it"
+        echo "[promote]   newest: $(stat -c '%y  %s bytes' "$newest")"
+        [ -f "$d/last.ckpt" ] && echo "[promote]   stale : $(stat -c '%y  %s bytes' "$d/last.ckpt")"
+        mv -f "$newest" "$d/last.ckpt" || { echo "ABORT: could not promote $newest"; exit 6; }
+        echo "[promote] done"
+    else
+        echo "[promote] last.ckpt is already the newest -- nothing to promote"
+    fi
+}
+promote_last "$LOGDIR/checkpoints"
+
 if [ -f "$LOGDIR/checkpoints/last.ckpt" ]; then
     echo "[resume] $LOGDIR/checkpoints/last.ckpt exists -- train.py auto-resumes from it"
 else
