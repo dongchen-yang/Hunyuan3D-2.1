@@ -1,0 +1,143 @@
+# lightgen: pbr->emission multiview fine-tune WITH alpha, REFERENCE IMAGE = the TexVerse
+# thumbnail, on the RELEASED dataset (Hugging Face 3dlg-hcvc/LightgenBench: train 36,426 /
+# val 200 / test 200). The paper recipe on the new data: `model:` and `lightning:` below are
+# byte-identical to cfgs/lightgen-emission-74k-alpha-thumb-agentic-fir.yaml (24-channel
+# conv_in, LR 7e-5, bs4 x 4 GPUs = global 16, 50,000 steps, checkpoint/validation every 1,250,
+# trough checkpoints every 10,000); read that file and its venus-05 twin for the reasoning.
+# 50,000 x 16 = 800k shape-visits = ~22 epochs of 36,426.
+#
+# THIS FILE IS A TEMPLATE. It runs on any Alliance cluster, so it carries two tokens instead
+# of absolute paths, and the job body (scripts/lightgen/train_release_body.sh) writes the
+# config it actually trains with into node-local storage each segment:
+#   __ROOT__   the cluster's persistent root, <scratch>/lightgen_mvpaint (venv, hf_home, log)
+#   __STAGE__  $SLURM_TMPDIR/lightgen_release: the unpacked release, re-laid-out to the
+#              fixture layout the loader reads (scripts/lightgen/relayout_release.py), the
+#              thumbnail dir and the two example JSONs. Nothing shared between segments, so
+#              there is no symlink to repoint and no JSON to overwrite under a running job.
+# The body also sets num_workers from the job's CPUs (cpus/4 - 2; 10 on a 48-CPU node, the
+# paper value). train.py names the logdir after this file's basename, so the generated copy
+# keeps it.
+#
+# Launcher: scripts/lightgen/submit_release.sh (login node; cluster-aware header + the body).
+# Validation during training is val64 of the NEW val split
+# (scripts/lightgen/val64_release_shas.txt, the make_val_subset.py rule on the 200); only 28
+# of the old val64 are in the new val split.
+
+model:
+  base_learning_rate: 7.0e-05
+  target: hunyuanpaintpbr.model_emission.HunyuanPaintEmission
+  params:
+    num_view: 6
+    view_size: 512
+    drop_cond_prob: 0.1
+    val_num_inference_steps: 30
+    gradient_checkpointing: true
+
+    # 4 noisy emission + 4 normal + 4 position + 4 albedo + 4 mr + 4 alpha.
+    # train.py expands conv_in from the pretrained 12 to this, zero-initialising 12-23 to
+    # match the append order in hunyuanpaintpbr/unet/modules.py (_PBR_STACK).
+    use_alpha: true
+    noise_in_channels: 24
+
+    stable_diffusion_config:
+      # Path is deterministic, not copied by hand: scripts/lightgen/stage_fir.sh pins
+      # revision 0b94677654c57bb9a6b6845cd7b704ccf551d327 -- the same snapshot the venus env
+      # runs -- so HF_HOME/hub/models--<repo>/snapshots/<rev>/ resolves to exactly this.
+      # Pinning the revision is what makes fir and venus the same weights rather than
+      # "whatever main was on the day each was staged".
+      pretrained_model_name_or_path: __ROOT__/hf_home/hub/models--tencent--Hunyuan3D-2.1/snapshots/0b94677654c57bb9a6b6845cd7b704ccf551d327/hunyuan3d-paintpbr-v2-1
+      custom_pipeline: ./hunyuanpaintpbr
+
+data:
+  target: src.data.objaverse_hunyuan.DataModuleFromConfig
+  params:
+    # Per GPU. 4 GPUs x accumulate_grad_batches 1 -> global batch 16.
+    batch_size: 4
+    # Filled by the job body: CPUs / 4 DDP ranks - 2 for the rank's own process (48 CPUs ->
+    # 10, the paper value). Each worker decodes 37 PNGs per example plus the thumbnail (and
+    # augments it).
+    num_workers: __NUM_WORKERS__
+    train:
+      -
+        target: src.data.dataloader.lightgen_emission_loader.LightgenEmissionDataset
+        params:
+          num_view: 6
+          use_alpha: true
+          # Reference = TexVerse thumbnail <thumbnail_dir>/<sha>.png via upstream load_image,
+          # then upstream augment_image (identity p=0.5; rotation/scale/translation/
+          # perspective; fill = the drawn gray/black/white background). The release ships the
+          # thumbnail as <uuid>/thumbnail.png; relayout_release.py hard-links each one to
+          # __STAGE__/thumbs/<uuid>.png, and make_74k_jsons.py --thumbnail_dir proves every
+          # listed sha has one before a batch is touched. No fallback: a missing thumbnail is
+          # a bad example, fatal after three distinct ones.
+          ref_source: thumbnail
+          thumbnail_dir: __STAGE__/thumbs
+          augment_ref: true
+          # Written INSIDE the job by make_74k_jsons.py with the ABSOLUTE node-local paths of
+          # THIS job, from the train list of the release's splits.json (36,426;
+          # --expect_train 36426, NO --allow_missing) with --thumbnail_dir; A7 is the proof
+          # the views and the thumbnails are both staged whole.
+          json_path: __STAGE__/release_train.json
+    validation:
+      -
+        target: src.data.dataloader.lightgen_emission_loader.LightgenEmissionDataset
+        params:
+          num_view: 6
+          use_alpha: true
+          # Same reference source, NO augmentation: val/emission_mse must compare checkpoints
+          # on identical inputs.
+          ref_source: thumbnail
+          thumbnail_dir: __STAGE__/thumbs
+          augment_ref: false
+          json_path: __STAGE__/release_val64.json
+
+lightning:
+  modelcheckpoint:
+    params:
+      # 1250, not 2500, because the campaign runs in 24-HOUR segments. Whatever has happened
+      # since the last `last.ckpt` write is lost when SLURM kills the job at the wall clock,
+      # so the checkpoint interval is a direct tax on every segment boundary. At the MEASURED
+      # 3.80 s/step, 2500 would risk 2.6 h of a 24 h segment (11%); 1250 risks 1.3 h (5.5%).
+      every_n_train_steps: 1250
+      # save_last is what makes a requeue survivable: the resume path reads last.ckpt from
+      # the LIGHTGEN_RUN_TS-stamped logdir. save_top_k selects on sampled-emission quality,
+      # a pixel MSE of the fully sampled views vs GT -- not the v-prediction training loss.
+      save_top_k: 3
+      monitor: 'val/emission_mse'
+      mode: min
+      save_last: true
+  # Unconditional saves at the LR-cycle troughs (warm_up_step 1000 + T_step 9000 = a
+  # 10,000-step cycle, see configure_optimizers). The main callback above cannot be relied on
+  # for these: with save_top_k=3 + a monitor, a step that would not enter the top-k is never
+  # WRITTEN, so trough 20,000 of this campaign never existed on disk and no watcher could
+  # have saved it. These are the checkpoints the real point-sampled evaluator will choose
+  # between, because val/emission_mse is too noisy to select on.
+  trough_checkpoint:
+    every_n_train_steps: 10000
+  callbacks: {}
+
+  trainer:
+    benchmark: true
+    max_steps: 50000
+    gradient_clip_val: 1.0
+    accumulate_grad_batches: 1
+    # pytorch-lightning counts val_check_interval in TRAINING BATCHES while max_steps and
+    # every_n_train_steps count OPTIMISER STEPS. With accumulate_grad_batches 1 those are
+    # the same thing here, unlike the venus config where accumulate 2 made validation run at
+    # half the checkpoint interval.
+    #
+    # KEPT EQUAL TO every_n_train_steps ON PURPOSE. It is tempting to checkpoint often (crash
+    # safety) while validating rarely (cost), but that quietly corrupts checkpoint SELECTION:
+    # `val/emission_mse` persists in `callback_metrics` between validations, so a checkpoint
+    # written at a non-validation step is ranked with the PREVIOUS validation's score and can
+    # take a top_k slot it did not earn. (It does not crash --
+    # ModelCheckpoint._save_topk_checkpoint only raises MisconfigurationException when the key
+    # is absent entirely AND the val loop has already run, which a stale-but-present value
+    # avoids. Verified against the installed pytorch_lightning 1.9.5 source.)
+    #
+    # 1250 gives 40 validations over the 50k-step campaign -- the same number the venus run
+    # did, so validation overhead is a known quantity rather than a new variable.
+    val_check_interval: 1250
+    num_sanity_val_steps: 0
+    check_val_every_n_epoch: null   # if not set, validation does not run
+    # `devices` is not set here: train.py overwrites it from --gpus (0,1,2,3 -> 4).
