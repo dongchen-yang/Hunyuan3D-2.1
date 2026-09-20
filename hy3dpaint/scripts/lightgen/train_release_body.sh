@@ -86,6 +86,9 @@ BRANCH=$(git rev-parse --abbrev-ref HEAD)
 [ "$BRANCH" = "lightgen" ] || { echo "ABORT: clone is on branch '$BRANCH', expected lightgen"; exit 2; }
 HEAD_NOW=$(git rev-parse HEAD)
 [ "$HEAD_NOW" = "$COMMIT" ] || { echo "ABORT: clone is at $HEAD_NOW but this job was submitted on $COMMIT -- the config or model code changed while the chain was queued. Cancel the chain and start a NEW stamp."; exit 2; }
+# The commit says nothing about an edit that was never committed.
+DIRTY=$(git status --porcelain --untracked-files=no)
+[ -z "$DIRTY" ] || { echo "ABORT: tracked files are modified in $REPO (never edit on the cluster):"; echo "$DIRTY"; exit 2; }
 cd hy3dpaint
 [ -f "$CFG_TMPL" ] || { echo "ABORT: $CFG_TMPL not in the clone"; exit 2; }
 
@@ -215,7 +218,9 @@ LOGDIR="logs/$(basename "$CFG_TMPL" .yaml)-${NAME}-${STAMP}"
 promote_last() {
     local d="$1" newest
     [ -d "$d" ] || return 0
-    newest=$(ls -1t "$d"/last.ckpt "$d"/last-v*.ckpt 2>/dev/null | head -1)
+    # `|| true` INSIDE the pipeline: with no last-v*.ckpt (the normal case) ls returns 2, and
+    # under pipefail + errexit the bare assignment would end the segment here, silently.
+    newest=$( { ls -1t "$d"/last.ckpt "$d"/last-v*.ckpt 2>/dev/null || true; } | head -1 )
     [ -n "$newest" ] || return 0
     if [ "$newest" != "$d/last.ckpt" ]; then
         echo "[promote] $(basename "$newest") is newer than last.ckpt -- promoting it"

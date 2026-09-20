@@ -79,8 +79,18 @@ N_TAR=$( { ls "$DATA"/data/train/multiview/*.tar "$DATA"/data/train/thumbnail/*.
 
 # Update the code HERE (red line: never edit on the cluster, pull what was pushed), and pin the
 # job to the commit it was submitted on.
+#
+# One campaign (stamp), one commit: the first submission of a stamp pulls and records the commit;
+# extending that stamp later does NOT pull, and refuses if the clone has moved since -- otherwise
+# segments 2-3 would continue segment 1's checkpoints under different code or config.
+mkdir -p "$ROOT/log"
+CAMPAIGN="$ROOT/log/campaign_${NAME}_${STAMP}.commit"
 cd -P "$REPO"
-if [ $DRY = 0 ]; then
+if [ -f "$CAMPAIGN" ]; then
+    COMMIT=$(cat "$CAMPAIGN")
+    [ "$(git rev-parse HEAD)" = "$COMMIT" ] || { echo "ABORT: stamp $STAMP was submitted on $COMMIT but the clone is at $(git rev-parse HEAD). Check that commit out to extend it, or start a NEW stamp."; exit 2; }
+    echo "[submit] extending stamp $STAMP on its recorded commit ${COMMIT:0:7} (no pull)"
+elif [ $DRY = 0 ]; then
     git fetch -q origin lightgen && git checkout -q lightgen && git pull -q --ff-only origin lightgen \
         || { echo "ABORT: git pull --ff-only failed on $CLUSTER (local changes or a diverged branch) -- investigate, do not overwrite"; exit 2; }
 fi
@@ -88,7 +98,6 @@ fi
 COMMIT=$(git rev-parse HEAD)
 [ -f "$BODY" ] || { echo "ABORT: $BODY missing at $COMMIT"; exit 2; }
 
-mkdir -p "$ROOT/log"
 cd -P "$ROOT"            # killarney: submit from a physical /scratch cwd
 dep=$DEPEND
 for i in $(seq "$SEG_START" $(( SEG_START + SEGMENTS - 1 ))); do
@@ -120,6 +129,7 @@ for i in $(seq "$SEG_START" $(( SEG_START + SEGMENTS - 1 ))); do
     jid=$(echo "$out" | grep -oE 'Submitted batch job [0-9]+' | grep -oE '[0-9]+' | tail -1)
     [ -n "$jid" ] || { echo "ABORT: no job id in sbatch's reply for segment $i"; exit 3; }
     echo "[submit] $CLUSTER segment $i: job $jid${dep:+ (after $dep)}  stamp=$STAMP commit=${COMMIT:0:7}"
+    [ -f "$CAMPAIGN" ] || echo "$COMMIT" > "$CAMPAIGN"
     dep=$jid
 done
 [ $DRY = 1 ] || echo "[submit] LIGHTGEN_RUN_TS=$STAMP -- record it: extending or resuming this campaign REQUIRES it."
