@@ -98,6 +98,14 @@ module load StdEnv/2023 gcc python/3.12 cuda/12.6 opencv/4.12.0
 source "$ROOT/env/bin/activate"
 export PYTHONNOUSERSITE=1
 export HF_HOME=$ROOT/hf_home
+# diffusers 0.30 copies a LOCAL custom pipeline (./hunyuanpaintpbr) into HF_MODULES_CACHE on every
+# load, in every rank, with a plain shutil.copy ("We always copy local files"). With the default
+# cache ($HF_HOME/modules, shared scratch) one rank imported unet/modules.py while another was
+# rewriting it: ImportError in that rank, and the other three hung at DDP init, RUNNING but dead
+# (killarney job 5584159, 2026-09-21; fir's Lustre never lost that race). Node-local cache: the
+# copy is microseconds there.
+export HF_MODULES_CACHE=$STAGE/hf_modules
+mkdir -p "$HF_MODULES_CACHE"
 export HF_HUB_OFFLINE=1
 export TRANSFORMERS_OFFLINE=1
 # trillium compute nodes mount $HOME read-only: per-user caches go to node-local storage there.
