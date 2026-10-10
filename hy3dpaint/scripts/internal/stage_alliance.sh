@@ -113,7 +113,7 @@ step_check() {
     ( cd "$REPO/hy3dpaint" && python - <<'PY'
 import sys
 sys.path.insert(0, ".")
-import hunyuanpaintpbr.model_emission  # noqa: F401
+import hunyuanpaintpbr.unet.model  # noqa: F401
 from src.data.dataloader.lightgen_emission_loader import LightgenEmissionDataset as D
 import cv2
 assert D.REF_SOURCES == ("frontal_albedo", "thumbnail"), D.REF_SOURCES

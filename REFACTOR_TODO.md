@@ -22,7 +22,7 @@ same for `plans/2026-09-16-hunyuan3d-paint-refactor.md`); use them as a source o
 - [x] 5b. Move the kept cluster scripts into `hy3dpaint/scripts/internal/`
 - [x] 6. Configs (per D14)
 - [x] 7. Coverage run (no code change)
-- [ ] 8. Fold our model and loader into upstream's originals (per D13)
+- [x] 8. Fold our model and loader into upstream's originals (per D13)
 - [ ] 9. Cleanups inside the folded code
 - [ ] 10. Our other edits inside upstream's files
 - [ ] 11. The JSON builders and the release data scripts
@@ -501,15 +501,18 @@ what the fold changes observably (the class name in logs and in a new logdir's `
   The loader tests move to the new path. Full gates, the training check, the tests. Done `6ac033e`
   (moved verbatim, checked by AST; upstream's `__main__` demo of the replaced class dropped): full
   gates paper 204 and release 200 IDENTICAL (4090), fresh and resume IDENTICAL, tests 19/19.
-- [ ] 8b. Model: `HunyuanPaintEmission` → `HunyuanPaint`. Unchanged: Keep stable 4, 5 and 6 (attribute
+- [x] 8b. Model: `HunyuanPaintEmission` → `HunyuanPaint`. Unchanged: Keep stable 4, 5 and 6 (attribute
   names, the panel, the RNG draw order); `_swap_in_fork_unet` (building the repo class directly is
   under Later); our condition-dropout fix (`model_emission.py:341-379`; upstream's
   `unet/model.py:363,367` test a key that never exists, so upstream never drops normal and position).
-  Full gates, the training check fresh and resume, the tests.
+  Full gates, the training check fresh and resume, the tests. Done `0a450ae` (every moved method
+  verbatim, checked by AST): full gates paper 204 and release 200 IDENTICAL (Blackwell, job 296083),
+  fresh and resume IDENTICAL (job 296082), tests 19 + 7.
 
 **Instructions:**
 
-**Result:**
+**Result:** Loader and model folded (8a `b2eb834`, 8b `0a450ae`); old class paths are one-line re-exports until
+step 15. Every check IDENTICAL (full gates on two GPU types, training fresh and resume). PASS.
 
 ### 9. Cleanups inside the folded code
 

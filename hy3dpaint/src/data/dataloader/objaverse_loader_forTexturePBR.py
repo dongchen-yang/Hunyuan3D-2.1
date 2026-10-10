@@ -49,7 +49,7 @@ class TextureDataset(BaseDataset):
     view subsampling (views are the canonical 000-005), adds images_emission and
     images_alpha. The reference image (`images_cond`, the same image stacked twice --
     upstream code slices images_cond[:, 0:1] and [:, 1:2], and only slot 0 is used
-    by model_emission.py) is selected by `ref_source`:
+    by the model, hunyuanpaintpbr/unet/model.py) is selected by `ref_source`:
 
       frontal_albedo  render_cond/000.png, our unlit GT-albedo render from upstream's
                       azimuth-0 camera (== render_tex/001_albedo.png). Every Hunyuan row
@@ -95,7 +95,7 @@ class TextureDataset(BaseDataset):
             self.dirs = json.load(f)
         self.num_view, self.image_size = num_view, image_size
         # False only to reproduce the archived 20-channel run against a pre-alpha fixture; it
-        # must then be false on the model too (HunyuanPaintEmission.use_alpha) and
+        # must then be false on the model too (HunyuanPaint.use_alpha) and
         # noise_in_channels must be 20. The model cross-checks all three against the real
         # conv_in width per batch, so a half-flipped combination raises rather than trains.
         self.use_alpha = use_alpha

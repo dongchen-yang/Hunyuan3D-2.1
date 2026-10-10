@@ -12,6 +12,7 @@
 # fine-tuning enabling code and other elements of the foregoing made publicly available
 # by Tencent in accordance with TENCENT HUNYUAN COMMUNITY LICENSE AGREEMENT.
 
+import gc
 import os
 
 # import ipdb
@@ -34,7 +35,7 @@ from diffusers import (
     ControlNetModel,
 )
 
-from .modules import Dino_v2, UNet2p5DConditionModel
+from .modules import Basic2p5DTransformerBlock, Dino_v2, UNet2p5DConditionModel
 import math
 
 
@@ -45,6 +46,57 @@ def extract_into_tensor(a, t, x_shape):
 
 
 class HunyuanPaint(pl.LightningModule):
+    """lightgen: pbr->emission (multiview), our model edited into upstream's HunyuanPaint in place (refactor
+        step 8b; `hunyuanpaintpbr.model_emission.HunyuanPaintEmission`, the class path stored configs name, is
+        this class). Adapted per the 2026-07-30 lightgen spec (revised).
+
+    Design (user-decided 2026-07-30): SINGLE generation stream. GT albedo + metallic-
+    roughness latents are channel-concatenated onto the geometry conditioning (normal +
+    CCM) -- the exact mechanism upstream uses for geometry -- and the denoised/supervised
+    output is the emission multiview alone (pbr_settings=["emission"], learned token
+    warm-started from the pretrained albedo token). Single reference (frontal albedo
+    render); upstream's dual-ref consistency loss dropped. No teacher-forcing, no
+    per-slot timestep mixing.
+
+    Three mechanics in here are non-obvious and are the reason this file exists at all:
+
+    1. THE UNET CLASS SWAP. `DiffusionPipeline.from_pretrained(<snapshot>, custom_pipeline=
+       ./hunyuanpaintpbr)` does NOT build `pipe.unet` from this package. The snapshot's
+       `model_index.json` declares the unet component as `["modules", "UNet2p5DConditionModel"]`,
+       which makes diffusers load `<snapshot>/unet/modules.py` as a dynamic module
+       (`diffusers_modules.local.modules`). That bundled copy has no knowledge of the
+       `embeds_albedo` / `embeds_mr` concat this design depends on, so it would build a
+       12-channel input stack and hand it to the 20-channel conv_in -- a loud shape error on
+       the first step, not a silent wrong-answer. So after the pipeline loads we throw that unet
+       away and rebuild it from THIS package's `UNet2p5DConditionModel.from_pretrained` (same
+       weights, same strict 12-channel load) -- see `_swap_in_fork_unet`.
+
+    2. ONE MATERIAL SLOT. Upstream runs two generation slots (albedo, mr) through every
+       attention block. Emission needs exactly one. `_retarget_material_slots` sets N_pbr=1
+       everywhere and points the per-material attention processors at the pretrained
+       *albedo* projections, so the emission slot inherits albedo's attention weights the
+       same way its learned text token does.
+
+    3. THE LEFTOVER MATERIAL PARAMETERS. With one slot, every `to_{q,k,v,out}_mr` / `to_v_mr` /
+       `learned_text_clip_mr` parameter -- plus `learned_text_clip_albedo`, superseded by the
+       emission token -- becomes unreachable. Upstream's `set_learned_parameters` marks anything
+       named `*albedo*`/`*mr*` trainable, which would hand the optimizer ~74.5M parameters that
+       can never receive a gradient, a hard error under `DDPStrategy(find_unused_parameters=
+       False)`. `_freeze_unreachable_parameters` freezes them; the smoke test asserts that the
+       set of gradient-less trainable parameters is then empty.
+
+    DO NOT sample from this model with `HunyuanPaintPipeline.__call__`. That path prepares only
+    `images_normal` / `images_position` into latents and replicates only those for classifier-free
+    guidance, so it would feed a 12-channel stack to the 20-channel conv_in and (if that were
+    patched) mis-size the guidance batch. `validation_step` below is the reference sampling loop
+    for this model; any inference tooling should follow it or extend the pipeline first.
+    """
+
+    #: the generation slot this model produces (drives `prepare_batch_data` and the learned token)
+    EMISSION_TOKEN = "emission"
+    #: the pretrained material slot whose attention projections the emission slot reuses
+    ATTENTION_SLOT = "albedo"
+
     def __init__(
         self,
         stable_diffusion_config,
@@ -55,6 +107,9 @@ class HunyuanPaint(pl.LightningModule):
         with_normal_map=None,
         with_position_map=None,
         pbr_settings=["albedo", "mr"],
+        val_num_inference_steps=30,
+        gradient_checkpointing=False,
+        use_alpha=True,
         **kwargs,
     ):
         """Initializes the HunyuanPaint Lightning Module.
@@ -68,6 +123,9 @@ class HunyuanPaint(pl.LightningModule):
             with_normal_map: Flag indicating whether normal maps are used
             with_position_map: Flag indicating whether position maps are used
             pbr_settings: List of PBR materials to generate (e.g., albedo, metallic-roughness)
+            val_num_inference_steps: lightgen: sampling steps of validation_step (LIGHTGEN_VAL_STEPS overrides)
+            gradient_checkpointing: lightgen: checkpoint the main unet's activations
+            use_alpha: lightgen: the glTF opacity map is a condition (conv_in channels 20-23)
             **kwargs: Additional keyword arguments
         """
         super(HunyuanPaint, self).__init__()
@@ -121,6 +179,52 @@ class HunyuanPaint(pl.LightningModule):
             self.dino_v2 = self.dino_v2.bfloat16()
 
         self.validation_step_outputs = []
+
+        # lightgen: the emission model. Upstream's build above strict-loads the pretrained
+        # ["albedo", "mr"] checkpoint; the switch to a single emission slot happens afterwards, on
+        # top of the loaded weights.
+        # Whether the per-texel glTF opacity map is a condition (conv_in channels 20-23).
+        # True is the current contract -- it is what gives this baseline the same input as
+        # TEXGen's 13ch variant, TRELLIS.2 and SegviGen. The flag exists so the archived
+        # 20-channel checkpoint (`step=00045000`, the "without alpha" eval row) stays loadable
+        # for re-scoring without checking out an older commit; set it false ONLY together with
+        # noise_in_channels 20 and the dataset's own use_alpha=false. Mismatches are caught per
+        # batch by `_assert_condition_channel_layout`, which checks the real conv_in width
+        # rather than trusting these three flags to agree.
+        self.use_alpha = use_alpha
+
+        # LIGHTGEN_VAL_STEPS lets the smoke test cut the sampling loop short without a config edit.
+        self.val_num_inference_steps = int(os.environ.get("LIGHTGEN_VAL_STEPS", val_num_inference_steps))
+
+        self.pbr_settings = [self.EMISSION_TOKEN]
+        self.pipeline.set_pbr_settings(self.pbr_settings)
+
+        self._swap_in_fork_unet(stable_diffusion_config)
+        self._add_emission_token()
+        self._retarget_material_slots()
+
+        # Re-run the freeze recipe: it was applied above to the unet we just
+        # discarded, and the emission token did not exist yet when it ran.
+        self.pipeline.set_learned_parameters()
+        self.num_frozen_unreachable_params = self._freeze_unreachable_parameters()
+
+        # A full 512^2 / 6-view / batch-1 step does not fit in 24 GB without this (measured:
+        # OOM without, 17.4 GiB peak with, on an RTX 4090).
+        #
+        # This checkpoints the MAIN unet only. Note that `unet_dual`'s reference pass is NOT
+        # graph-free, despite every `unet_dual.*` parameter being frozen: its
+        # `encoder_hidden_states_ref` is `learned_text_clip_ref`, which the inherited
+        # `set_learned_parameters` leaves trainable (the name contains neither "attn1" nor
+        # "unet_dual"). That one leaf makes the dual pass require grad, so its activations are
+        # retained. The smoke test's "no trainable parameter is gradient-less" assertion is the
+        # direct evidence -- `learned_text_clip_ref` does receive a gradient.
+        #
+        # Two further levers exist if the reference pass ever needs to be cheaper, neither
+        # applied here (venus has the headroom, and both change what trains):
+        #   * `self.unet.unet_dual.enable_gradient_checkpointing()` -- keeps the token trainable;
+        #   * freezing `learned_text_clip_ref` -- then the dual pass really is graph-free.
+        if gradient_checkpointing:
+            self.unet.unet.enable_gradient_checkpointing()
 
     def register_schedule(self):
 
@@ -295,177 +399,298 @@ class HunyuanPaint(pl.LightningModule):
             - extract_into_tensor(self.sqrt_one_minus_alphas_cumprod, t, x.shape) * x
         )
 
-    def training_step(self, batch, batch_idx):
-        """Performs a single training step with both conditioning paths.
+    # ------------------------------------------------------------------ build
 
-        Implements:
-        1. Dual-conditioning path training (main ref + secondary ref)
-        2. Velocity-prediction with consistency loss
-        3. Conditional dropout for robust learning
-        4. PBR-specific losses (albedo/metallic-roughness)
+    def _swap_in_fork_unet(self, stable_diffusion_config):
+        """Replace the snapshot-bundled `UNet2p5DConditionModel` with this package's class.
 
-        Args:
-            batch: Input batch from dataloader
-            batch_idx: Index of current batch
-
-        Returns:
-            torch.Tensor: Combined loss value
+        Same directory, same weights, same `strict=True` load -- only the *code* changes,
+        which is the entire point (see module docstring, item 1).
         """
-
-        cond_imgs, cond_imgs_another, target_imgs, normal_imgs, position_imgs = self.prepare_batch_data(batch)
-
-        B, N_ref = cond_imgs.shape[:2]
-        _, N_gen, _, H, W = target_imgs["albedo"].shape
-        N_pbrs = len(self.pbr_settings)
-        t = torch.randint(0, self.num_timesteps, size=(B,)).long().to(self.device)
-        t = t.unsqueeze(-1).repeat(1, N_pbrs, N_gen)
-        t = rearrange(t, "b n_pbrs n -> (b n_pbrs n)")
-
-        all_target_pbrs = []
-        for pbr_token in self.pbr_settings:
-            all_target_pbrs.append(target_imgs[pbr_token])
-        all_target_pbrs = torch.stack(all_target_pbrs, dim=0).transpose(1, 0)
-        gen_latents = self.encode_images(all_target_pbrs)  #! B, N_pbrs N C H W
-        ref_latents = self.encode_images(cond_imgs)  #! B, M, C, H, W
-        ref_latents_another = self.encode_images(cond_imgs_another)  #! B, M, C, H, W
-
-        all_shading_tokens = []
-        for token in self.pbr_settings:
-            if token in ["albedo", "mr"]:
-                all_shading_tokens.append(
-                    getattr(self.unet, f"learned_text_clip_{token}").unsqueeze(dim=0).repeat(B, 1, 1)
+        snapshot = str(stable_diffusion_config["pretrained_model_name_or_path"])
+        unet_dir = os.path.join(snapshot, "unet")
+        config_path = os.path.join(unet_dir, "config.json")
+        weights_path = os.path.join(unet_dir, "diffusion_pytorch_model.bin")
+        for path in (config_path, weights_path):
+            if not os.path.isfile(path):
+                raise FileNotFoundError(
+                    f"{path} is missing -- HunyuanPaint rebuilds the unet from the "
+                    f"snapshot's own unet/ directory. If the weights ship under a different "
+                    f"filename (e.g. .safetensors), UNet2p5DConditionModel.from_pretrained "
+                    f"needs adapting too."
                 )
-        shading_embeds = torch.stack(all_shading_tokens, dim=1)
 
-        if self.unet.use_dino:
-            dino_hidden_states = self.dino_v2(cond_imgs[:, :1, ...])
-            dino_hidden_states_another = self.dino_v2(cond_imgs_another[:, :1, ...])
+        # Drop the snapshot-class unet before building the replacement, so only one full
+        # copy of a ~1.9B-parameter fp32 model is resident at a time.
+        del self.unet
+        self.pipeline.unet = None
+        gc.collect()
 
-        gen_latents = rearrange(gen_latents, "b n_pbrs n c h w -> (b n_pbrs n) c h w")
-        noise = torch.randn_like(gen_latents).to(self.device)
-        latents_noisy = self.train_scheduler.add_noise(gen_latents, noise, t).to(self.device)
-        latents_noisy = rearrange(latents_noisy, "(b n_pbrs n) c h w -> b n_pbrs n c h w", b=B, n_pbrs=N_pbrs)
+        fork_unet = UNet2p5DConditionModel.from_pretrained(unet_dir)
+        # `UNet2p5DConditionModel.from_pretrained` builds the wrapper with no schedulers;
+        # `HunyuanPaint` gives the wrapper it builds both, so match that.
+        fork_unet.train_sched = self.train_scheduler
+        fork_unet.val_sched = self.pipeline.scheduler
+        # `register_modules`, not plain assignment: `DiffusionPipeline.__setattr__` only
+        # recomputes the (library, class) pair in `pipeline.config` when the existing entry is
+        # non-null, and the `= None` above nulled it -- so a plain assignment here would leave
+        # `config["unet"] == (None, None)` and a later `save_pretrained` would emit that.
+        self.pipeline.register_modules(unet=fork_unet)
+        self.unet = fork_unet
 
-        cached_condition = {}
+        actual = type(self.unet).__module__
+        if not actual.startswith(__package__):
+            raise RuntimeError(
+                f"unet class swap did not take: pipe.unet comes from {actual!r}, expected a "
+                f"module under {__package__!r}. The embeds_albedo/embeds_mr concat lives in this "
+                f"package's unet/modules.py; without it the input stack is 12 channels wide and "
+                f"the 20-channel conv_in raises on the first forward."
+            )
 
+    def _add_emission_token(self):
+        """Register `learned_text_clip_emission`, warm-started from the pretrained albedo token.
+
+        Registered on the inner `UNet2DConditionModel` (not the 2.5D wrapper) so it sits
+        beside `learned_text_clip_{albedo,mr,ref}` under the `unet.unet.` state-dict prefix
+        that `train.py`'s `resume_from` path expects.
+        """
+        inner = self.unet.unet
+        if not hasattr(inner, f"learned_text_clip_{self.EMISSION_TOKEN}"):
+            warm_start = getattr(inner, f"learned_text_clip_{self.ATTENTION_SLOT}")
+            inner.register_parameter(
+                f"learned_text_clip_{self.EMISSION_TOKEN}",
+                torch.nn.Parameter(warm_start.detach().clone()),
+            )
+
+    def _retarget_material_slots(self):
+        """Collapse the two upstream material slots down to one emission slot.
+
+        Three different `pbr_setting` attributes are read for two different reasons:
+          * the 2.5D wrapper's  -- read by `HunyuanPaintPipeline` to look up
+            `learned_text_clip_<token>` and to size the latent batch, so it must say "emission";
+          * each transformer block's -- only `len()` is read (that's N_pbr), so the name is
+            cosmetic but is kept as "emission" for readability;
+          * each attention processor's -- the names SELECT weights (`to_q` vs `to_q_mr`), so
+            these must name a slot the pretrained checkpoint actually has. "albedo" points the
+            emission slot at the pretrained albedo projections, matching how its learned text
+            token is warm-started.
+        """
+        self.unet.pbr_setting = [self.EMISSION_TOKEN]
+        # Only the main unet is retargeted: `unet_dual`'s blocks were built with pbr_setting=None
+        # (N_pbr=1 already) and carry no material-specific projections.
+        for block in self.unet.unet.modules():
+            if not isinstance(block, Basic2p5DTransformerBlock):
+                continue
+            block.pbr_setting = [self.EMISSION_TOKEN]
+            for attn_name in ("attn1", "attn_refview"):
+                attn = getattr(block, attn_name, None)
+                processor = getattr(attn, "processor", None) if attn is not None else None
+                if processor is None:
+                    continue
+                if hasattr(processor, "pbr_setting"):
+                    processor.pbr_setting = [self.ATTENTION_SLOT]
+                if hasattr(processor, "pbr_settings"):  # RefAttnProcessor2_0's alias
+                    processor.pbr_settings = [self.ATTENTION_SLOT]
+                if hasattr(processor, "n_pbr_tokens"):
+                    processor.n_pbr_tokens = 1
+
+    def _freeze_unreachable_parameters(self):
+        """Freeze trainable parameters that a single emission slot can never reach.
+
+        Two families, both left trainable by the inherited `set_learned_parameters` purely
+        because their names contain "mr" or "albedo":
+          * every `to_{q,k,v,out}_mr` / `to_v_mr` projection plus `learned_text_clip_mr` --
+            the second material slot no longer exists (~74.4M elements);
+          * `learned_text_clip_albedo` -- the emission slot carries its own token, and
+            albedo's is read exactly once, as the warm start (78,848 elements).
+
+        Left trainable these receive no gradient, which `DDPStrategy(find_unused_parameters=
+        False)` -- what train.py uses -- treats as a hard error. Returns the number of frozen
+        elements; 0 would mean the naming assumption broke, not that there was nothing to do.
+        """
+        unreachable_suffixes = (f"learned_text_clip_{self.ATTENTION_SLOT}",)
+        frozen = 0
+        for name, param in self.unet.named_parameters():
+            if not param.requires_grad:
+                continue
+            if "_mr" in name or name.endswith(unreachable_suffixes):
+                param.requires_grad = False
+                frozen += param.numel()
+        return frozen
+
+    # ------------------------------------------------------------- conditioning
+
+    def _resize01(self, images):
+        return v2.functional.resize(
+            images.to(self.device), self.view_size, interpolation=3, antialias=True
+        ).clamp(0, 1)
+
+    def _encode_conditions(self, batch):
+        """Encode everything except the emission target.
+
+        `prepare_batch_data` reads `images_emission` into `target_imgs` because
+        `self.pbr_settings == ["emission"]`; albedo and mr are conditions here, not targets,
+        so they are encoded separately and ride in on the channel-concat path.
+        """
+        cond_imgs, _, target_imgs, normal_imgs, position_imgs = self.prepare_batch_data(batch)
+
+        cached = {
+            "embeds_albedo": self.encode_images(self._resize01(batch["images_albedo"])),
+            "embeds_mr": self.encode_images(self._resize01(batch["images_mr"])),
+        }
+        if self.use_alpha:
+            # Per-texel glTF opacity. Encoded exactly like the other PBR conditions (the map
+            # stores the scalar replicated across RGB, so the 3-channel VAE takes it as-is) and
+            # appended LAST in the conv_in stack -- see modules.py's `_PBR_STACK`.
+            cached["embeds_alpha"] = self.encode_images(self._resize01(batch["images_alpha"]))
         if normal_imgs is not None:
-            normal_embeds = self.encode_images(normal_imgs[0])
-            cached_condition["embeds_normal"] = normal_embeds  #! B, N, C, H, W
-
+            cached["embeds_normal"] = self.encode_images(normal_imgs[0])
         if position_imgs is not None:
-            position_embeds = self.encode_images(position_imgs[0])
-            cached_condition["embeds_position"] = position_embeds  #! B, N, C, H, W
-            cached_condition["position_maps"] = position_imgs[0]  #! B, N, C, H, W
+            cached["embeds_position"] = self.encode_images(position_imgs[0])
+            cached["position_maps"] = position_imgs[0]
 
+        B = cond_imgs.shape[0]
+        emission_token = getattr(self.unet, f"learned_text_clip_{self.EMISSION_TOKEN}")
+        cached["shading_embeds"] = emission_token.unsqueeze(0).unsqueeze(0).repeat(B, 1, 1, 1)  # (B, 1, 77, 1024)
+        cached["ref_latents"] = self.encode_images(cond_imgs)
+        if self.unet.use_dino:
+            cached["dino_hidden_states"] = self.dino_v2(cond_imgs[:, :1, ...])
+        cached["mva_scale"] = 1.0
+        cached["ref_scale"] = 1.0
+        self._assert_condition_channel_layout(cached)
+        return target_imgs, cached
+
+    def _assert_condition_channel_layout(self, cached):
+        """Fail loudly if the conv_in channel stack would come out mis-aligned.
+
+        Each condition's conv_in channel offset is nothing but its position in the concat
+        inside `UNet2p5DConditionModel.forward`, so an absent key does not remove a condition --
+        it slides every later one down four channels. Dropping albedo would feed mr into the
+        channels the model learned as albedo; dropping a geometry map would feed albedo into
+        pretrained normal/position channels. Neither raises on its own: the widths still work
+        out if the conv_in was expanded to match.
+
+        Two separate failures are checked:
+
+        1. a HOLE in the stack -- a key missing from the middle, which silently shifts every
+           later condition onto channels that mean something else;
+        2. a WIDTH disagreement between the stack this model is about to build and the conv_in
+           it will feed. `use_alpha` (here), the dataset's own `use_alpha` and the config's
+           `noise_in_channels` are three knobs that must agree, and nothing else forces them to.
+           Checking the real `conv_in.in_channels` catches every combination, including the
+           quiet one: noise_in_channels 24 with use_alpha false, which trains happily with four
+           permanently-zero input channels and is not recoverable after the fact.
+
+        `modules.py` carries the same offset check (it is the code that owns the offsets, and
+        the pipeline can reach it without passing through here). This one fires earlier, with
+        the conditioning still in hand. A raise rather than `assert` so `python -O` cannot
+        drop it.
+        """
+        expected = ["embeds_normal", "embeds_position", "embeds_albedo", "embeds_mr"]
+        if self.use_alpha:
+            expected.append("embeds_alpha")
+        missing = [key for key in expected if key not in cached]
+        if missing:
+            raise RuntimeError(
+                f"conditioning is missing {missing}; conv_in expects the full positional stack "
+                f"{self._stack_description()}. To drop a condition (e.g. for guidance) zero "
+                f"its tensor -- never remove the key."
+            )
+        if "embeds_alpha" in cached and not self.use_alpha:
+            raise RuntimeError(
+                "use_alpha is false but embeds_alpha was built; it would be concatenated onto "
+                "conv_in channels the model has no width for."
+            )
+
+        # +1 for the noisy emission latent itself, which occupies channels 0-3.
+        want = 4 * (len(expected) + 1)
+        got = self.unet.unet.conv_in.in_channels
+        if want != got:
+            raise RuntimeError(
+                f"conv_in has {got} input channels but the condition stack "
+                f"{self._stack_description()} needs {want}. Set the config's "
+                f"noise_in_channels to {want} (train.py expands conv_in from the pretrained 12 "
+                f"to whatever it says), or flip use_alpha to match the checkpoint you are "
+                f"loading -- the 20-channel run is the one without alpha."
+            )
+
+    def _stack_description(self):
+        return ("[noisy 0-3 | normal 4-7 | position 8-11 | albedo 12-15 | mr 16-19"
+                + (" | alpha 20-23]" if self.use_alpha else "]"))
+
+    def _apply_condition_dropout(self, cached, B):
+        """Upstream's classifier-free-guidance dropout recipe, extended to albedo/mr/alpha.
+
+        Draw structure follows upstream's `training_step` (tag pre-refactor) exactly -- independent per-sample
+        draws for the map embeddings, a separate draw for `position_maps`, a separate draw for
+        DINO, and the same three-way mva/ref draw -- because inference-time guidance in
+        `HunyuanPaintPipeline` relies on that having been trained.
+
+        One deliberate divergence: upstream guards the embedding drop with
+        `if "normal_imgs" in cached_condition` / `if "position_imgs" in cached_condition`, but
+        the keys it actually sets are `embeds_normal` / `embeds_position` -- so upstream never
+        drops those two at all. The keys are corrected here, which means normal/position
+        conditioning really is dropped, as the lightgen spec calls for.
+        """
         for b in range(B):
-            prob = np.random.rand()
-            if prob < self.drop_cond_prob:
-                if "normal_imgs" in cached_condition:
-                    cached_condition["embeds_normal"][b, ...] = torch.zeros_like(
-                        cached_condition["embeds_normal"][b, ...]
-                    )
-                if "position_imgs" in cached_condition:
-                    cached_condition["embeds_position"][b, ...] = torch.zeros_like(
-                        cached_condition["embeds_position"][b, ...]
-                    )
+            if np.random.rand() < self.drop_cond_prob:
+                # Zeroing (not removing) is what `_assert_condition_channel_layout` and
+                # modules.py's `_PBR_STACK` prefix rule require -- the key must stay so the
+                # positional channel offsets hold. alpha drops with the same draw as the rest
+                # of the stack, so guidance sees a coherent all-conditions-off sample.
+                for key in ("embeds_normal", "embeds_position", "embeds_albedo", "embeds_mr",
+                            "embeds_alpha"):
+                    if key in cached:
+                        cached[key][b, ...] = torch.zeros_like(cached[key][b, ...])
+            if np.random.rand() < self.drop_cond_prob:
+                if "position_maps" in cached:
+                    cached["position_maps"][b, ...] = torch.zeros_like(cached["position_maps"][b, ...])
+            if self.unet.use_dino and np.random.rand() < self.drop_cond_prob:
+                cached["dino_hidden_states"][b, ...] = torch.zeros_like(cached["dino_hidden_states"][b, ...])
 
-            prob = np.random.rand()
-            if prob < self.drop_cond_prob:
-                if "position_maps" in cached_condition:
-                    cached_condition["position_maps"][b, ...] = torch.zeros_like(
-                        cached_condition["position_maps"][b, ...]
-                    )
-
-            prob = np.random.rand()
-            if prob < self.drop_cond_prob:
-                dino_hidden_states[b, ...] = torch.zeros_like(dino_hidden_states[b, ...])
-            prob = np.random.rand()
-            if prob < self.drop_cond_prob:
-                dino_hidden_states_another[b, ...] = torch.zeros_like(dino_hidden_states_another[b, ...])
-
-        # MVA & Ref Attention
         prob = np.random.rand()
-        cached_condition["mva_scale"] = 1.0
-        cached_condition["ref_scale"] = 1.0
         if prob < self.drop_cond_prob:
-            cached_condition["mva_scale"] = 0.0
-            cached_condition["ref_scale"] = 0.0
+            cached["mva_scale"] = 0.0
+            cached["ref_scale"] = 0.0
         elif prob > 1.0 - self.drop_cond_prob:
-            prob = np.random.rand()
-            if prob < 0.5:
-                cached_condition["mva_scale"] = 0.0
+            if np.random.rand() < 0.5:
+                cached["mva_scale"] = 0.0
             else:
-                cached_condition["ref_scale"] = 0.0
-        else:
-            pass
+                cached["ref_scale"] = 0.0
 
-        if self.train_scheduler.config.prediction_type == "v_prediction":
+    # ------------------------------------------------------------------- steps
 
-            cached_condition["shading_embeds"] = shading_embeds
-            cached_condition["ref_latents"] = ref_latents
-            cached_condition["dino_hidden_states"] = dino_hidden_states
-            v_pred = self.forward_unet(latents_noisy, t, **cached_condition)
-            v_pred_albedo, v_pred_mr = torch.split(
-                rearrange(
-                    v_pred, "(b n_pbr n) c h w -> b n_pbr n c h w", n_pbr=len(self.pbr_settings), n=self.num_view
-                ),
-                1,
-                dim=1,
-            )
-            v_target = self.get_v(gen_latents, noise, t)
-            v_target_albedo, v_target_mr = torch.split(
-                rearrange(
-                    v_target, "(b n_pbr n) c h w -> b n_pbr n c h w", n_pbr=len(self.pbr_settings), n=self.num_view
-                ),
-                1,
-                dim=1,
-            )
+    def training_step(self, batch, batch_idx):
+        target_imgs, cached = self._encode_conditions(batch)
+        emission_lat = self.encode_images(target_imgs[self.EMISSION_TOKEN])  # (B, N, 4, h, w)
+        B, N = emission_lat.shape[:2]
 
-            albedo_loss_1, _ = self.compute_loss(v_pred_albedo, v_target_albedo)
-            mr_loss_1, _ = self.compute_loss(v_pred_mr, v_target_mr)
+        t = torch.randint(0, self.num_timesteps, size=(B,), device=self.device).long()
+        t_flat = rearrange(t.unsqueeze(-1).repeat(1, N), "b n -> (b n)")
+        flat = rearrange(emission_lat, "b n c h w -> (b n) c h w")
+        noise = torch.randn_like(flat)
+        noisy = rearrange(
+            self.train_scheduler.add_noise(flat, noise, t_flat), "(b n) c h w -> b n c h w", b=B
+        )
 
-            cached_condition["ref_latents"] = ref_latents_another
-            cached_condition["dino_hidden_states"] = dino_hidden_states_another
-            v_pred_another = self.forward_unet(latents_noisy, t, **cached_condition)
-            v_pred_another_albedo, v_pred_another_mr = torch.split(
-                rearrange(
-                    v_pred_another,
-                    "(b n_pbr n) c h w -> b n_pbr n c h w",
-                    n_pbr=len(self.pbr_settings),
-                    n=self.num_view,
-                ),
-                1,
-                dim=1,
-            )
+        self._apply_condition_dropout(cached, B)
 
-            albedo_loss_2, _ = self.compute_loss(v_pred_another_albedo, v_target_albedo)
-            mr_loss_2, _ = self.compute_loss(v_pred_another_mr, v_target_mr)
+        assert (
+            self.train_scheduler.config.prediction_type == "v_prediction"
+        ), f"expected v_prediction, got {self.train_scheduler.config.prediction_type}"
+        v_pred = self.forward_unet(noisy.unsqueeze(1), t_flat, **cached)  # slot axis N_pbr=1
+        v_pred = rearrange(v_pred, "(b p n) c h w -> b p n c h w", p=1, n=N)[:, 0]
+        v_target = rearrange(self.get_v(flat, noise, t_flat), "(b n) c h w -> b n c h w", b=B)
 
-            consistency_loss, _ = self.compute_loss(v_pred_another, v_pred)
-
-            albedo_loss = (albedo_loss_1 + albedo_loss_2) * 0.5
-            mr_loss = (mr_loss_1 + mr_loss_2) * 0.5
-
-            log_loss_dict = {}
-            log_loss_dict.update({f"train/albedo_loss": albedo_loss})
-            log_loss_dict.update({f"train/mr_loss": mr_loss})
-            log_loss_dict.update({f"train/cons_loss": consistency_loss})
-
-            loss_dict = log_loss_dict
-
-        elif self.train_scheduler.config.prediction_type == "epsilon":
-            e_pred = self.forward_unet(latents_noisy, t, **cached_condition)
-            loss, loss_dict = self.compute_loss(e_pred, noise)
-        else:
-            raise f"No {self.train_scheduler.config.prediction_type}"
-
-        # logging
-        self.log_dict(loss_dict, prog_bar=True, logger=True, on_step=True, on_epoch=True)
+        # fp32 loss: under bf16 autocast `v_pred` comes back bf16, and rounding the fp32 target
+        # down to match it would quantise the regression target itself.
+        loss = torch.nn.functional.mse_loss(v_pred.float(), v_target.float())
+        self.log_dict({"train/emission_loss": loss}, prog_bar=True, logger=True, on_step=True, on_epoch=True)
         self.log("global_step", self.global_step, prog_bar=True, logger=True, on_step=True, on_epoch=False)
-        lr = self.optimizers().param_groups[0]["lr"]
-        self.log("lr_abs", lr, prog_bar=True, logger=True, on_step=True, on_epoch=False)
-
-        return 0.85 * (albedo_loss + mr_loss) + 0.15 * consistency_loss
+        if getattr(self, "_trainer", None) is not None:
+            lr = self.optimizers().param_groups[0]["lr"]
+            self.log("lr_abs", lr, prog_bar=True, logger=True, on_step=True, on_epoch=False)
+        return loss
 
     def compute_loss(self, noise_pred, noise_gt):
         loss = F.mse_loss(noise_pred, noise_gt)
@@ -476,91 +701,56 @@ class HunyuanPaint(pl.LightningModule):
 
     @torch.no_grad()
     def validation_step(self, batch, batch_idx):
-        """Performs validation on a single batch.
+        """Standard single-stream sampling; conditions ride along at every step."""
+        target_imgs, cached = self._encode_conditions(batch)
+        gt_emission = target_imgs[self.EMISSION_TOKEN]  # (B, N, 3, H, W)
+        B, N = gt_emission.shape[:2]
+        h, w = cached["embeds_albedo"].shape[-2:]
 
-        Generates predicted images using:
-        1. Reference conditioning images
-        2. Optional normal/position maps
-        3. Frozen DINO features (if enabled)
-        4. Text prompt conditioning
+        # A shared cache dict makes the reference (unet_dual) pass, the DINO projection and the
+        # RoPE voxel indices run once for the whole loop instead of once per step -- the same
+        # trick `HunyuanPaintPipeline.denoise` uses.
+        cached["cache"] = {}
 
-        Compares predictions against ground truth targets and prepares visualization.
-        Stores results for epoch-level aggregation.
-
-        Args:
-            batch: Input batch from validation dataloader
-            batch_idx: Index of current batch
-        """
-        # [Validation image generation and comparison logic...]
-        # Key steps:
-        # 1. Preprocess conditioning images to PIL format
-        # 2. Set up conditioning inputs (normal maps, position maps, DINO features)
-        # 3. Run pipeline inference with fixed prompt ("high quality")
-        # 4. Decode latent outputs to image space
-        # 5. Arrange predictions and ground truths for visualization
-
-        cond_imgs_tensor, _, target_imgs, normal_imgs, position_imgs = self.prepare_batch_data(batch)
-        resolution = self.view_size
-        image_pils = []
-        for i in range(cond_imgs_tensor.shape[0]):
-            image_pils.append([])
-            for j in range(cond_imgs_tensor.shape[1]):
-                image_pils[-1].append(v2.functional.to_pil_image(cond_imgs_tensor[i, j, ...]))
-
-        outputs, gts = [], []
-        for idx in range(len(image_pils)):
-            cond_imgs = image_pils[idx]
-
-            cached_condition = dict(num_in_batch=self.num_view, N_pbrs=len(self.pbr_settings))
-            if normal_imgs is not None:
-                cached_condition["images_normal"] = normal_imgs[0][idx, ...].unsqueeze(0)
-            if position_imgs is not None:
-                cached_condition["images_position"] = position_imgs[0][idx, ...].unsqueeze(0)
-            if self.pipeline.unet.use_dino:
-                dino_hidden_states = self.dino_v2([cond_imgs][0])
-                cached_condition["dino_hidden_states"] = dino_hidden_states
-
-            latent = self.pipeline(
-                cond_imgs,
-                prompt="high quality",
-                num_inference_steps=30,
-                output_type="latent",
-                height=resolution,
-                width=resolution,
-                **cached_condition,
-            ).images
-
-            image = self.pipeline.vae.decode(latent / self.pipeline.vae.config.scaling_factor, return_dict=False)[
-                0
-            ]  # [-1, 1]
-            image = (image * 0.5 + 0.5).clamp(0, 1)
-
-            image = rearrange(
-                image, "(b n_pbr n) c h w -> b n_pbr n c h w", n_pbr=len(self.pbr_settings), n=self.num_view
-            )
-            image = torch.cat((torch.ones_like(image[:, :, :1, ...]) * 0.5, image), dim=2)
-            image = rearrange(image, "b n_pbr n c h w -> (b n_pbr n) c h w")
-            image = rearrange(
-                image,
-                "(b n_pbr n) c h w -> b c (n_pbr h) (n w)",
-                b=1,
-                n_pbr=len(self.pbr_settings),
-                n=self.num_view + 1,
-            )
-            outputs.append(image)
-
-        all_target_pbrs = []
-        for pbr_token in self.pbr_settings:
-            all_target_pbrs.append(target_imgs[pbr_token])
-        all_target_pbrs = torch.stack(all_target_pbrs, dim=0).transpose(1, 0)
-        all_target_pbrs = torch.cat(
-            (cond_imgs_tensor.unsqueeze(1).repeat(1, len(self.pbr_settings), 1, 1, 1, 1), all_target_pbrs), dim=2
+        sched = EulerAncestralDiscreteScheduler.from_config(
+            self.pipeline.scheduler.config, timestep_spacing="trailing"
         )
-        all_target_pbrs = rearrange(all_target_pbrs, "b n_pbrs n c h w -> b c (n_pbrs h) (n w)")
-        gts = all_target_pbrs
-        outputs = torch.cat(outputs, dim=0).to(self.device)
-        images = torch.cat([gts, outputs], dim=-2)
-        self.validation_step_outputs.append(images)
+        sched.set_timesteps(self.val_num_inference_steps, device=self.device)
+        z = torch.randn(B * N, 4, h, w, device=self.device) * sched.init_noise_sigma
+        for t in sched.timesteps:
+            z_in = sched.scale_model_input(z, t)
+            z_in = rearrange(z_in, "(b n) c h w -> b n c h w", b=B).unsqueeze(1)  # slot axis
+            t_step = torch.full((B * N,), int(t.item()), device=self.device, dtype=torch.long)
+            v = self.forward_unet(z_in, t_step, **cached)  # (B*N, 4, h, w) back
+            z = sched.step(v.float(), t, z).prev_sample
+
+        vae_dtype = next(self.pipeline.vae.parameters()).dtype
+        img = self.pipeline.vae.decode(
+            z.to(vae_dtype) / self.pipeline.vae.config.scaling_factor, return_dict=False
+        )[0]
+        pred = (img * 0.5 + 0.5).clamp(0, 1)  # (B*N, 3, H, W)
+        gt = rearrange(gt_emission.to(pred.device, pred.dtype), "b n c h w -> (b n) c h w")
+
+        # A monitorable scalar so ModelCheckpoint can select on sampling quality
+        # (monitor: 'val/emission_mse', mode: min). Note this is NOT the training objective --
+        # training regresses v in latent space, this is pixel MSE between the fully sampled
+        # emission views and the GT views, both in [0, 1]. fp32 for the same reason the training
+        # loss is fp32: under bf16 autocast `pred` comes back bf16. sync_dist=True averages the
+        # per-rank shards under DDP, so the monitored value is the same on every rank.
+        val_mse = torch.nn.functional.mse_loss(pred.float(), gt.float())
+        self.log(
+            "val/emission_mse",
+            val_mse,
+            prog_bar=True,
+            logger=True,
+            on_step=False,
+            on_epoch=True,
+            sync_dist=True,
+            batch_size=B,
+        )
+
+        panel = torch.cat([gt, pred], dim=-2)
+        self.validation_step_outputs.append(rearrange(panel, "(b n) c h w -> b c h (n w)", b=B))
 
     @torch.no_grad()
     def on_validation_epoch_end(self):
