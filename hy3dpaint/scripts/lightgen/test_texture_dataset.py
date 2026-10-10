@@ -22,10 +22,6 @@ from src.data.dataloader import objaverse_loader_forTexturePBR as loader
 from src.data.dataloader.objaverse_loader_forTexturePBR import TextureDataset
 
 
-FIXTURE_ROOT = os.environ.get(
-    "LIGHTGEN_FIXTURE_ROOT",
-    "/cs/3dlg-jupiter-project/lightgen/uv_voxel_pipeline/out_multiview_pilot10"
-)
 # Support override for testing skip path via env var; default to local JSON
 _DEFAULT_JSON = os.path.join(os.path.dirname(__file__), "pilot10_local.json")
 EXAMPLES_JSON = os.environ.get("LIGHTGEN_EXAMPLES_JSON", _DEFAULT_JSON)

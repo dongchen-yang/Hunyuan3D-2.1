@@ -72,14 +72,14 @@ class TextureDataset(BaseDataset):
     RGB, so it needs no special handling here -- it rides the same `_img` path as
     every other map. A fixture rendered before the alpha map existed holds only 30
     render_tex PNGs and will raise here rather than train without the condition;
-    upgrade it with `data_processing/multiview_render_pipeline/append_alpha_views.py`."""
+    upgrade it with `data_processing/archive/multiview_render_pipeline_74k/append_alpha_views.py` (parent repo)."""
 
-    # (batch key, PNG suffix). Order is documentation only -- the model reads by key -- but it
-    # matches the conv_in concat order in hunyuanpaintpbr/unet/modules.py, so keep it that way.
+    # (batch key, PNG suffix). The order is not the conv_in order (normal, position, albedo, mr, alpha;
+    # hunyuanpaintpbr/unet/modules.py) and need not be: the model reads the maps by key.
     MAPS = [("albedo", "albedo"), ("mr", "mr"), ("alpha", "alpha"),
             ("normal", "normal"), ("position", "pos"), ("emission", "emission")]
     REF_SOURCES = ("frontal_albedo", "thumbnail")
-    # Upstream's reference background colours (objaverse_loader_forTexturePBR.py:52-54).
+    # Upstream's reference background colours (this file's replaced __getitem__, tag pre-refactor).
     _BG_GRAY = [127 / 255.0] * 3
     _BG_BLACK = [0.0] * 3
     _BG_WHITE = [1.0] * 3
@@ -131,7 +131,7 @@ class TextureDataset(BaseDataset):
 
     @classmethod
     def _draw_bg_color(cls):
-        """Upstream's per-example background draw (objaverse_loader_forTexturePBR.py:101-106):
+        """Upstream's per-example background draw (this file's replaced __getitem__, tag pre-refactor):
         gray with p=0.6, otherwise black/white 50/50. Used as the RGBA composite colour and as
         the fill colour of augment_image; an RGB thumbnail only sees it through the fill."""
         if random.random() < 0.6:

@@ -66,7 +66,7 @@ class HunyuanPaint(pl.LightningModule):
        which makes diffusers load `<snapshot>/unet/modules.py` as a dynamic module
        (`diffusers_modules.local.modules`). That bundled copy has no knowledge of the
        `embeds_albedo` / `embeds_mr` concat this design depends on, so it would build a
-       12-channel input stack and hand it to the 20-channel conv_in -- a loud shape error on
+       12-channel input stack and hand it to the expanded conv_in (24 channels, 20 without alpha) -- a loud shape error on
        the first step, not a silent wrong-answer. So after the pipeline loads we throw that unet
        away and rebuild it from THIS package's `UNet2p5DConditionModel.from_pretrained` (same
        weights, same strict 12-channel load) -- see `_swap_in_fork_unet`.
@@ -87,7 +87,7 @@ class HunyuanPaint(pl.LightningModule):
 
     DO NOT sample from this model with `HunyuanPaintPipeline.__call__`. That path prepares only
     `images_normal` / `images_position` into latents and replicates only those for classifier-free
-    guidance, so it would feed a 12-channel stack to the 20-channel conv_in and (if that were
+    guidance, so it would feed a 12-channel stack to the expanded conv_in and (if that were
     patched) mis-size the guidance batch. `validation_step` below is the reference sampling loop
     for this model; any inference tooling should follow it or extend the pipeline first.
     """
@@ -444,7 +444,7 @@ class HunyuanPaint(pl.LightningModule):
                 f"unet class swap did not take: pipe.unet comes from {actual!r}, expected a "
                 f"module under {__package__!r}. The embeds_albedo/embeds_mr concat lives in this "
                 f"package's unet/modules.py; without it the input stack is 12 channels wide and "
-                f"the 20-channel conv_in raises on the first forward."
+                f"the expanded conv_in raises on the first forward."
             )
 
     def _add_emission_token(self):

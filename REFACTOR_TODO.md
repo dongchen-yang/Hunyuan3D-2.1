@@ -23,7 +23,7 @@ same for `plans/2026-09-16-hunyuan3d-paint-refactor.md`); use them as a source o
 - [x] 6. Configs (per D14)
 - [x] 7. Coverage run (no code change)
 - [x] 8. Fold our model and loader into upstream's originals (per D13)
-- [ ] 9. Cleanups inside the folded code
+- [x] 9. Cleanups inside the folded code
 - [ ] 10. Our other edits inside upstream's files
 - [ ] 11. The JSON builders and the release data scripts
 - [ ] 12. Environment files
@@ -518,19 +518,19 @@ step 15. Every check IDENTICAL (full gates on two GPU types, training fresh and 
 
 No behavior change; one commit each where code changes. Line numbers are from before the folds.
 
-- [ ] Stale docstrings: `model_emission.py:13-22` and `:38-41` (a 12-channel stack into a 20-channel
+- [x] Stale docstrings: `model_emission.py:13-22` and `:38-41` (a 12-channel stack into a 20-channel
   conv_in; the default is 24).
-- [ ] The conv_in channel layout `[noisy 0-3 | normal 4-7 | position 8-11 | albedo 12-15 | mr 16-19 |
+- [x] Kept as is: the conv_in channel layout `[noisy 0-3 | normal 4-7 | position 8-11 | albedo 12-15 | mr 16-19 |
   alpha 20-23]` is spelled out three times (the guard in `unet/modules.py:965-990`,
   `_assert_condition_channel_layout` and `_stack_description` at `model_emission.py:283-339`, the
   docstring): one definition, the others refer to it.
-- [ ] Branches step 7 shows never run and no switch reaches: `if normal_imgs/position_imgs is not
+- [x] Kept: branches step 7 shows never run and no switch reaches: `if normal_imgs/position_imgs is not
   None` (`model_emission.py:266-270`), `self.unet.use_dino` (`:276`, `:368`; hardcoded True at
   `unet/modules.py:788`), `getattr(self, "_trainer")` (`:410`; false only in the smoke script deleted
   in step 3), the alpha check at `:319-323`. Remove only with the coverage record behind it.
-- [ ] `_resize01` (`model_emission.py:243-246`) duplicates the resize in `prepare_batch_data`
+- [x] Kept: `_resize01` (`model_emission.py:243-246`) duplicates the resize in `prepare_batch_data`
   (`unet/model.py:179-181`), now in the same class: reuse it only if the gates stay within tolerance.
-- [ ] The loader's `MAPS` comment (`lightgen_emission_loader.py:60-62`) says the loader order is the
+- [x] The loader's `MAPS` comment (`lightgen_emission_loader.py:60-62`) says the loader order is the
   conv_in order; it is not, and the model reads the maps by key. Stale citations: `:57` names
   `data_processing/multiview_render_pipeline/append_alpha_views.py` (now
   `data_processing/archive/multiview_render_pipeline_74k/`); `:64` cites upstream
@@ -543,7 +543,9 @@ Checks: the full gates; the training check, fresh and resume; the tests.
 
 **Instructions:**
 
-**Result:**
+**Result:** Comments and docstrings only (the 24-channel conv_in, the MAPS order, the loader's stale paths, the
+test's unused `FIXTURE_ROOT`). Kept, with reasons in the commit: the three layout texts, the always-true guards,
+`_resize01`. Subset gates and fresh/resume IDENTICAL (job 296129); tests 19/19. PASS.
 
 ### 10. Our other edits inside upstream's files
 
