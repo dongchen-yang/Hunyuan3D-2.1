@@ -1,11 +1,11 @@
 # Hunyuan3D-Emission refactor — plan
 
-Turn the `lightgen` branch of our Hunyuan3D-2.1 fork into a clean Hunyuan3D-Emission (display name
-`pbr→emission (multiview)`): only the code behind the paper and release runs, our changes as minimal
-edits on upstream's modules or as our own modules beside upstream's, generic entry points for
-LightgenBench users. Modeled on `TEXGen/.claude/worktrees/refactor/REFACTOR_TODO.md` (branch
-`refactor`) and its sibling `TRELLIS2/.claude/worktrees/trellis2-emission-refactor/REFACTOR_TODO.md`;
-the rules below are TEXGen's unless a line says otherwise.
+Turn our Hunyuan3D-2.1 fork into a clean Hunyuan3D-Emission (display name `pbr→emission
+(multiview)`; directory `Hunyuan3D-Emission/` and branch `release` from step 15): only the code behind
+the paper and release runs, our changes as edits on upstream's original modules, generic entry points
+for LightgenBench users. Modeled on TEXGen-Emission's finished plan (`../TEXGen-Emission/REFACTOR_TODO.md`)
+and TRELLIS2's (`../TRELLIS2/.claude/worktrees/trellis2-emission-refactor/REFACTOR_TODO.md`); the rules
+below are TEXGen's unless a line says otherwise.
 
 A September attempt (a trim into `deprecated/2026-09-16/`, no renames, a deterministic-mode inference
 gate) was specified and approved on 2026-09-17, then called off on 2026-09-19 before any file moved.
@@ -15,84 +15,95 @@ same for `plans/2026-09-16-hunyuan3d-paint-refactor.md`); use them as a source o
 ## Progress
 
 - [ ] 1. Housekeeping (tag, worktree and this plan done)
-- [ ] 2. Check setup: inference gate, tests, training check, noise baselines (no code change)
+- [ ] 2. Check setup: inference gate, tests, training check, noise envelopes (no code change)
 - [ ] 3. Dead one-off scripts
-- [ ] 4. Upstream's demo, app and API layer (per D12)
+- [x] 4. Dropped: upstream's demo, app and API layer stays (D12)
 - [ ] 5. Launchers (per D14)
 - [ ] 5b. Move the kept cluster scripts into `hy3dpaint/scripts/internal/`
 - [ ] 6. Configs (per D14)
 - [ ] 7. Coverage run (no code change)
-- [ ] 8. Our model `hunyuanpaintpbr/model_emission.py` (per D13)
-- [ ] 9. Our loader `src/data/dataloader/lightgen_emission_loader.py` (per D13)
-- [ ] 10. Our edits inside upstream's files
+- [ ] 8. Fold our model and loader into upstream's originals (per D13)
+- [ ] 9. Cleanups inside the folded code
+- [ ] 10. Our other edits inside upstream's files
 - [ ] 11. The JSON builders and the release data scripts
 - [ ] 12. Environment files
 - [ ] 13. Release layer: generic entry points for LightgenBench users (per D15)
 - [ ] 14. Docs
-- [ ] 15. Merge (per D11) and the directory name (per D4) (needs Dongchen's go)
-- [ ] 16. Cut-over (optional, per D8)
+- [ ] 15. Branch `release` (per D11) and the rename to `Hunyuan3D-Emission/` (per D4) (needs Dongchen's go)
+- [ ] 16. Cut-over (per D8)
+- [ ] 17. Release cut: our internal files leave the published tree (per D10)
 
 The check setup is step 2, not step 7 as in TEXGen: TEXGen's step 1 moved an existing gate into its
 repo, while this fork has no gate yet, and every later step (deletions included) runs one.
 
 ## How we work
 
-- Nothing runs until Dongchen has answered the open decisions below and given the go.
+- Steps run automatically, in order (Dongchen 2026-10-10: "you just run it automatically. after 1
+  step, you start the next one"): each step is verified by its checks, then committed, its **Result**
+  filled in and reported in one line, and the next one starts. Dongchen can add **Instructions** to
+  any step at any time.
+- **Result** is at most three lines (what changed, commits, verdict); details live in the commit
+  messages, the fork's docs and the step's report.
 - One step = one commit with one purpose. Removals and moves never share a commit with a behavior
   change. Cleanups change no behavior; fixes go under "Later", one step each, only if wanted.
-- Steps run automatically, in order: when a step's checks pass, commit it, fill in its **Result**,
-  report it in one line, start the next. Dongchen can add **Instructions** to any step at any time.
-- Stop and ask only for: (1) an open decision the step needs; (2) a check that fails, unless the
-  cause is an obvious slip in the step; (3) something the plan does not cover (a needed fix, a
-  behavior change, a file outside the step's list); (4) an action outside the worktree and our
+- Stop and ask only for: (1) an open decision the step needs; (2) a check that fails,
+  unless the cause is an obvious slip in the step; (3) something the plan does not cover (a needed
+  fix, a behavior change, a file outside the step's list); (4) an action outside the worktree and our
   compute: a push, a parent-repo commit, the merge, a write to jupiter's shared tree. Jobs on our
   machines for the checks need no go; reading checkpoints from jupiter needs none either.
 - After each step that touches files the inference gate must pass for both runs (subset or full, as
   the step says) and every test must pass with no skip. Steps that touch training code (`train.py`,
-  `model_emission.py`, the loader, `src/data/objaverse_hunyuan.py`, `hunyuanpaintpbr/unet/*`) also
-  need the training check. A check passes when outputs are identical, or every difference is within
-  the noise of two runs of tag `pre-refactor` on the same GPU type; `missing` must be 0; an empty
-  input never passes.
+  the model, the loader, `src/data/objaverse_hunyuan.py`, `hunyuanpaintpbr/unet/*`) also need the
+  training check. `missing` must be 0; an empty input never passes.
+- Pass rule (TEXGen's, Dongchen 2026-10-06 and 2026-10-08): a view that differs from its baseline by
+  at most 1/255 per pixel, on at most 0.5% of its channel values, is noise and passes; any other view
+  must lie within the envelope, the largest difference between any two of at least 4 runs of
+  `pre-refactor` on the same GPU type. Training check: every recorded value within its envelope, the
+  structure (step order, batch names, keys) exact. A result outside is rerun once on another GPU of
+  the type, never the one it ran on, before it counts as failed. Every run is reported.
 - Run checks in parallel across our machines (the compute-access skill): the gates on the
-  workstation 4090 and on xg4090 if step 2 shows it gives the same bytes; the training checks on a
-  Solar node with at least 48 GB (a 4090 cannot train this model at any batch size); prepare the
-  next step while checks run, commit it only after the step before passes. Skip a machine that needs
-  a 2FA login. Submit Solar jobs without `-w`: a pinned job on our own nodes evicts another lab's
-  running job.
+  workstation 4090 and on any lab 4090 that step 2 qualifies; the training checks on a Solar node
+  with at least 48 GB (a 4090 cannot train this model at any batch size); prepare the next step while
+  checks run, commit it only after the step before passes. Skip a machine that needs a 2FA login.
+- Never wait for a GPU: right before dispatch, probe every candidate (free GPU memory and free host
+  RAM: a checkpoint load takes about 20 GB, so 28 GB `MemAvailable`) and send work only to the ones
+  free now; a busy GPU or a held lock is skipped, not waited on. A Solar job is submitted without
+  `-w` (a pinned job on our own nodes evicts another lab's) and must start at once or be canceled.
+  If nothing is free, report it and stop. TEXGen's `scripts/internal/gate/fanout.py` does this for
+  TEXGen; step 2 adapts it.
 - Compare only within one GPU type and environment: outputs differ between GPU types. Never gate
   against the published views of the paper run: they came from Solar (L40S and A40-class), and on
   the same checkpoint and seed xg4090 and an A40 agree on 0 of 34 shapes (per-view max |Δ| median
   14–16/255).
-- On the 4090, take both lock files, in this order: `/local-scratch/localhome/dya78/lightgen_4090.lock`
+- A run on the workstation 4090 holds both lock files: `/local-scratch/localhome/dya78/lightgen_4090.lock`
   (the Hunyuan drivers, `../evaluation/newdata_eval/sweeps/common.sh:5`, the compute-access
   `hostprobe.py`) and `/local-scratch/localhome/dya78/.locks/gpu0-rtx4090.lock` (the TEXGen and
-  TRELLIS.2 gates, which run in parallel refactors). Each lock alone does not exclude the other
-  lanes. Wait for 28 GB `MemAvailable` before loading a checkpoint (it needs about 20 GB of host RAM;
-  the workstation has 62 GB).
+  TRELLIS.2 gates). Each lock alone does not exclude the other lanes.
 - Every gate and training run gets its own `HF_MODULES_CACHE`: diffusers 0.30 copies
   `./hunyuanpaintpbr` into that cache on every load, so a shared one races and can import another
   tree's copy (`scripts/lightgen/train_release_body.sh:101-108` is the fix for training).
 - Upstream is branch `main` (`82920d6`, Tencent's 2025-10-17 commit the fork branched from on
   2026-07-30); Tencent's repo is not a remote. `git diff main -- <file>` shows what we changed. Our
-  changes are minimal edits inside upstream's files or our own modules beside upstream's (D13);
-  upstream code we do not use stays untouched, even inside files we edit (D9), except D12.
+  changes are edits to upstream's original modules (D13: our model and loader fold into them);
+  upstream code we do not use stays untouched, even inside files we edit (D9).
 - A doc or comment in a kept file that names a removed file is fixed in the same step. Exception:
   the paper run's config `cfgs/lightgen-emission-74k-alpha-thumb-agentic-fir-xg.yaml` keeps its
   bytes (it is the run's own config; D14).
 - Each step updates the fork's own docs it affects (`README.md`, and from step 14 the doc of record)
   in the same commit. Parent docs (`AGENTS.md`, `docs/baselines/hunyuan3d-paint.md`,
-  `docs/status/checkpoints.md`, `docs/evaluation.md`) describe `lightgen` and change only at the
-  merge: a step that makes one stale adds an item to step 15's parent-docs list.
+  `docs/status/checkpoints.md`, `docs/evaluation.md`) describe `lightgen` and change only at step 15:
+  a step that makes one stale adds an item to step 15's parent-docs list.
 - The evaluation lane's code in the parent (`evaluation/mvpaint_bridge/`, `evaluation/newdata_eval/`)
-  is not edited here; it changes only where this work breaks it, at the merge (step 15).
+  is not edited here; it changes only where this work breaks it, at step 15.
 - All edits happen in the worktree `.claude/worktrees/hunyuan3d-emission-refactor` (branch
   `hunyuan3d-emission-refactor`, from tag `pre-refactor` = `413dc28`); `git diff pre-refactor` shows
   every edit. The main checkout stays on `lightgen`.
 - In the main checkout: never `git add -A` (the worktree is only excluded locally, through
-  `info/exclude`, until step 1's ignore rule reaches `lightgen` at the merge) and never
+  `info/exclude`, until step 1's ignore rule reaches the branch of record at step 15) and never
   `git clean -x`/`-X` (its ignored `log/` holds the 2026-07-30 env-install and smoke logs).
-- The parent pointer is bumped once, at the merge, path-limited (`git commit -- Hunyuan3DPaint-emissive`):
-  the parent carries other sessions' uncommitted work. Nothing is pushed without Dongchen's go.
+- The parent pointer is bumped once, at step 15, path-limited: the parent carries other sessions'
+  uncommitted work (stage only this work's hunks, never `git add -A`). Nothing is pushed without
+  Dongchen's go.
 
 ## Runs and the gate
 
@@ -135,8 +146,8 @@ Euler-ancestral steps, no guidance, bf16 autocast, the global seed reset per sha
 - Routine steps: a fixed 20-shape subset per run (about 1.5 min of sampling at 4.2 s per shape, plus
   the model load). Full: 204 and 200 shapes (about 14 min each), for steps that touch the model, the
   loader, the configs or `train.py`, and before the merge.
-- Compare the six views `<sha>/seed00/00{0..5}_emission.png` of every shape. Pass: `same=N
-  different=0 missing=0`, or every difference within noise.
+- Compare the six views `<sha>/seed00/00{0..5}_emission.png` of every shape, under the pass rule in
+  § How we work.
 - Measured before this plan: on one 4090 in normal mode (no deterministic algorithms) the same seed
   repeats byte for byte (3 shapes, 2026-08-16, `../docs/evaluation.md:1006-1007`; 34 shapes on xg4090
   and 12 views on the workstation from existing files, 2026-10-06). Deterministic mode was never
@@ -157,8 +168,10 @@ Euler-ancestral steps, no guidance, bf16 autocast, the global seed reset per sha
    `configs/project.yaml`, the filled release config, `../evaluation/mvpaint_bridge/test_predict_ref_source.py:14`):
    `hunyuanpaintpbr.model_emission.HunyuanPaintEmission`, `src.data.objaverse_hunyuan.DataModuleFromConfig`,
    `src.data.dataloader.lightgen_emission_loader.LightgenEmissionDataset`, `train.SetupCallback`,
-   `train.CodeSnapshot`; and `src.utils.train_util.instantiate_from_config` (predictor `:181`). A
-   moved or renamed module keeps a one-line alias at the old path.
+   `train.CodeSnapshot`; and `src.utils.train_util.instantiate_from_config` (predictor `:181`). The
+   predictor also imports the loader by module path (`:356`). After the fold (D13) our two modules
+   stay as one-line re-exports until step 15; from then on `scripts/convert_config.py` maps the old
+   paths in stored configs.
 3. Config files named from outside: `cfgs/lightgen-emission-74k-alpha-thumb-agentic-fir-xg.yaml`
    (`job_hunyuan.sh:20`, `hunyuan_worker.sbatch:104`, `stage_hunyuan_host.sh:146`,
    `../evaluation/render_emissive/out_blocked_case/02fcc43854994fb0b4c5b4bd847fbd3a/scripts/run_xg.sh:6`)
@@ -169,8 +182,8 @@ Euler-ancestral steps, no guidance, bf16 autocast, the global seed reset per sha
 4. State-dict keys: 2,482 in all, `unet.unet.*` (1,062, among them `conv_in.weight` [320, 24, 3, 3]
    and `learned_text_clip_{albedo,mr,ref,emission}`), `unet.unet_dual.*` (686), `dino_v2.dino_v2.*`
    (727), and seven schedule buffers. The predictor fails on any missing or unexpected key
-   (`:209-217`), so attribute and module names inside `HunyuanPaintEmission`, the UNets and the
-   attention processors stay, and so do the frozen, unreachable `*_mr*` tensors. The conv_in
+   (`:209-217`), so attribute and module names inside the model (`HunyuanPaintEmission`, after step 8
+   upstream's `HunyuanPaint`), the UNets and the attention processors stay, and so do the frozen, unreachable `*_mr*` tensors. The conv_in
    widening runs before the load (`train.py:256-272`, copied by the predictor `:137-168`).
 5. The model surface the predictor uses: `num_view`, `view_size`, `device`, `val_num_inference_steps`
    (and its `LIGHTGEN_VAL_STEPS` override, `model_emission.py:90`), `pipeline` (and `.to`),
@@ -211,15 +224,17 @@ Euler-ancestral steps, no guidance, bf16 autocast, the global seed reset per sha
     (`n_shapes`, per-seed `rng_seed`): read by `../evaluation/mvpaint_bridge/bridge_batch.py:102`,
     `job_hunyuan.sh:36`, `hunyuan_worker.sbatch:384-398`, `../paper_figures/hunyuan_extra_light/config.py:12`.
     Any fork-side inference entry (D15) writes the same layout.
-13. The directory `Hunyuan3DPaint-emissive/` until step 15 (`../.gitmodules:15-18`; Keep stable 1;
-    `hunyuan_cameras.py:38-41`; jupiter `trellis2_bw/eval_inputs/solar_hunyuan_stage/Hunyuan3DPaint-emissive.tar`,
-    which unpacks to that name). The Alliance clones are named `Hunyuan3D-2.1-emissive`.
+13. The directory `Hunyuan3DPaint-emissive/` until step 15 renames it `Hunyuan3D-Emission/` (D4)
+    (`../.gitmodules:15-18`; Keep stable 1; `hunyuan_cameras.py:38-41`; jupiter
+    `trellis2_bw/eval_inputs/solar_hunyuan_stage/Hunyuan3DPaint-emissive.tar`, which unpacks to that
+    name). The Alliance clones are named `Hunyuan3D-2.1-emissive`.
 14. Branch `lightgen` and tag `pre-refactor`: the parent gitlink is `413dc28`, the cluster clones
-    track `lightgen`, and the release run's segments ran `8a9cb8d` and `413dc28`.
+    track `lightgen`, and the release run's segments ran `8a9cb8d` and `413dc28`. From step 15
+    `lightgen` stays frozen there and `release` is the branch of record (D11).
 
 ## Decisions
 
-Carried over from TEXGen (say if one does not apply here):
+Carried over from TEXGen:
 
 - D1 Removed files are deleted, not moved to `deprecated/`; git history and the tag `pre-refactor`
   keep them. (The September plan moved them into `deprecated/2026-09-16/` instead.)
@@ -235,65 +250,64 @@ Carried over from TEXGen (say if one does not apply here):
 - D6 Every config- or env-switched option in kept code stays (`use_alpha: false` with 20 channels,
   `ref_source: frontal_albedo`, `augment_ref`, `lightning.trough_checkpoint`, `LIGHTGEN_VAL_STEPS`,
   `LIGHTGEN_DDP_FIND_UNUSED`, the single-node SLURM pin); only their configs go.
-- D7 Work happens on branch `hunyuan3d-emission-refactor`; the parent pointer is bumped once, at the
-  merge.
-- D9 Upstream code we do not use stays untouched, files and blocks alike (`hy3dshape/`,
-  `textureGenPipeline.py`, `DifferentiableRenderer/`, `custom_rasterizer/`, `utils/`,
-  `convert_utils.py`, `train_examples/`, `cfgs/hunyuan-paint-pbr.yaml` whose target
-  `hunyuanpaintpbr.model.HunyuanPaint` does not resolve on `main` either, the dead `multiple_devices`
-  branch in `unet/attn_processor.py:692-695`, `CodeSnapshot.get_file_list` in `train.py:139-146`).
-  Exception: D12.
-- D10 (open, before publishing) Internal scripts in the published code: `scripts/internal/` will hold
-  our Slurm accounts (`rrg-msavva_gpu`, `def-msavva_gpu`, `aip-msavva`, `def-msavva`), `$HOME/scratch`
-  defaults, a mail address (`submit_release.sh:117`) and the gate. Publish as is, publish a snapshot
-  without it, or move it to the parent repo? Recommended: a published snapshot without it.
+- D7 Work happens on branch `hunyuan3d-emission-refactor`; the parent pointer is bumped once, at
+  step 15.
+- D9 Upstream code we do not use stays untouched, files and blocks alike: the demo, app and API layer
+  (D12), `hy3dshape/`, `textureGenPipeline.py`, `DifferentiableRenderer/`, `custom_rasterizer/`,
+  `utils/`, `convert_utils.py`, `train_examples/`, `cfgs/hunyuan-paint-pbr.yaml` (its target
+  `hunyuanpaintpbr.model.HunyuanPaint` does not resolve on `main` either), the dead
+  `multiple_devices` branch in `unet/attn_processor.py:692-695`, `CodeSnapshot.get_file_list` in
+  `train.py:139-146`, and the upstream methods our folded code does not replace (D13).
+- [ ] D10 (open, decided at step 17) Internal files in the published code. TEXGen's ruling (Dongchen
+  2026-10-09): the release drops the check tooling, and with it the other internal files. Here
+  `scripts/internal/` will hold the gate and our cluster launchers (accounts `rrg-msavva_gpu`,
+  `def-msavva_gpu`, `aip-msavva`, `def-msavva`; `$HOME/scratch` defaults; a mail address,
+  `submit_release.sh:117`). With one branch of record (D11), step 17 either deletes them from
+  `release` and tags the last commit that has them (`checks-tooling`, as TEXGen's step 19), or keeps
+  `release` internal and publishes a separate cut of it (TEXGen's `main` plus `release`).
+  Recommended: the first.
 
-New for Hunyuan3D-Emission, open until Dongchen answers (each has a recommendation):
+Decided by Dongchen on 2026-10-10:
 
-- [ ] D4 The directory at the merge: keep `Hunyuan3DPaint-emissive/` or rename it? The September
-  ruling was "no renames … just keep it for now" (2026-09-16), for that pass only. A rename moves
-  `.gitmodules`, the gitlink and every reference in Keep stable 1 and 13; class paths stay either
-  way. Recommended: rename to `Hunyuan3D-Emission/` (the paper's name for the lane), matching
-  `TEXGen-Emission/`; decide the GitHub repository name (`dongchen-yang/Hunyuan3D-2.1`) at the same time.
-- [ ] D8 Cut-over (before step 16): after the merge, do the Solar stage tar, the xg4090 staged tree
-  and the Alliance clones move to the merged branch, or stay on `pre-refactor`? Past campaigns keep
-  their pinned commits either way.
-- [ ] D11 Where the result lands: merge into `lightgen` (the branch of record: the parent gitlink and
-  every cluster clone follow it; `main` stays upstream's), or a new branch with `lightgen` frozen at
-  `pre-refactor`? Recommended: merge into `lightgen` when no job runs from any clone.
-- [ ] D12 Upstream's demo, app and API layer: root `gradio_app.py`, `api_server.py`, `api_models.py`,
-  `model_worker.py`, `demo.py`, `constants.py`, `logger_utils.py`, `torchvision_fix.py`,
-  `test_api_server.py`, `test_api.ipynb`, `API_DOCUMENTATION.md`, `API_TESTING_SUMMARY.md`, `docker/`,
-  `assets/` (68 MB), and `hy3dpaint/demo.py`, `hy3dpaint/assets/` (3.3 MB). None is in our training or
-  inference import closure and only these files read `assets/`. Delete as TEXGen's step 4 did, or keep
-  per D9? A larger cut, a paint-only fork that also deletes `hy3dshape/` (94 MB; three parent
-  docstrings cite one of its files), is possible. Recommended: delete the demo, app and API layer;
-  keep `hy3dshape/` and `hy3dpaint`'s library code (D9).
-- [ ] D13 Our modules stay their own files beside upstream's: `HunyuanPaintEmission`
-  (`hunyuanpaintpbr/model_emission.py`, a subclass of `HunyuanPaint` in `unet/model.py:47` that
-  overrides 3 of its 14 methods and inherits the other 11 unchanged) and `LightgenEmissionDataset`
-  (`src/data/dataloader/lightgen_emission_loader.py`, a subclass of `BaseDataset`), not folded into
-  upstream's originals as TEXGen's step 8 does. Upstream's `training_step` and `validation_step` are
-  hard-wired to two material slots, a dual-reference loss and `pipeline.__call__`, so a fold would
-  rewrite them behind switches; upstream's `TextureDataset` shares nothing with ours beyond the two
-  `BaseDataset` helpers we already inherit. Their names stay (Keep stable 2), so no alias files are
-  needed. Our small edits inside upstream's files stay edits (step 10). Recommended: as written.
-- [ ] D14 Paper launchers and configs. TEXGen kept only its release launchers and config. Here: keep
-  the release set (`submit_release.sh`, `train_release_body.sh`, `stage_alliance.sh`, the release
-  config template) and the paper run's inference config `-fir-xg.yaml`, which four parent scripts
-  name and which equals the run's jupiter `config.yaml`; delete the other 10 configs and the 74k-era
-  launchers. The paper run's launchers stay readable at the commits each segment ran (`b04eebf`,
-  `cdcae12`); both carry a silent exit (`ls -1t last.ckpt last-v*.ckpt | head -1` under
-  `set -euo pipefail` exits 2 when either name is missing; `train_release_body.sh:229-231` has the
-  `|| true` form). Alternative: also delete `-fir-xg.yaml` and point the four parent scripts at the
-  jupiter `config.yaml` at the merge. Recommended: as written.
-- [ ] D15 An inference entry for LightgenBench users. Today the only driver is the parent's
-  `evaluation/mvpaint_bridge/predict_emission_views.py` (plus `evaluation/newdata_eval/seedutil.py`),
-  and the views-to-UV bridge (`bridge_views_to_uv.py`) is the parent's too. Add a fork-side entry that
-  writes the same views (gated byte-identical against the frozen parent predictor), point users at
-  the parent repo, or move the predictor into the fork and make the parent call it? Recommended: a
-  fork-side entry that writes views (Keep stable 12); the parent predictor stays as it is, the bridge
-  stays in the parent, and the README says where it is.
+- D4 The directory becomes `Hunyuan3D-Emission/` at step 15, the paper's name for the lane. The
+  GitHub repository's name (`dongchen-yang/Hunyuan3D-2.1`) is decided at step 15 (TEXGen kept its own).
+- D8 Cut-over (step 16): the Solar stage tar, the xg4090 staged tree and the Alliance clones move to
+  `release`. Past campaigns keep their pinned commits.
+- D11 The result lands on a new branch `release`, created at step 15 from this branch's head:
+  `.gitmodules` and the parent gitlink follow it, `lightgen` stays frozen at `pre-refactor` (the code
+  the paper and release runs trained on, which the campaign `.commit` files name), and `main` stays
+  upstream's. (`lightgen` exists because the fork's `main` is upstream's code: our work went on a
+  separate branch so `git diff main` shows exactly our changes.)
+- D12 Upstream's demo, app and API layer stays; step 4 is dropped.
+- D13 Fold, as TEXGen's step 8: `HunyuanPaintEmission` into upstream's `HunyuanPaint`
+  (`hunyuanpaintpbr/unet/model.py:47`) and `LightgenEmissionDataset` into upstream's `TextureDataset`
+  (`src/data/dataloader/objaverse_loader_forTexturePBR.py:25`), our methods replacing upstream's in
+  place. Until step 15 our two files stay as one-line re-exports, because the parent predictor
+  imports the loader by module path (`../evaluation/mvpaint_bridge/predict_emission_views.py:356`) and
+  the gate runs a frozen copy of it; at step 15 the parent moves to the new paths, the re-exports are
+  deleted, and a `scripts/convert_config.py` maps the old class paths in stored configs (no checkpoint
+  needs converting: none pickles a class of ours). With the fold, upstream's own two-slot PBR training
+  path no longer exists in the fork (its config already fails to import on `main`); the kept demo
+  stack uses neither class.
+- D14 Keep only the release launchers and config (`submit_release.sh`, `train_release_body.sh`,
+  `stage_alliance.sh`, the release config template) and the paper run's inference config
+  `-fir-xg.yaml` (four parent scripts name it; it equals the run's jupiter `config.yaml`); delete the
+  other 10 configs and the 74k-era launchers. The paper run's launchers stay readable at the commits
+  each segment ran (`b04eebf`, `cdcae12`); both carry a silent exit (`ls -1t last.ckpt last-v*.ckpt |
+  head -1` under `set -euo pipefail` exits 2 when either name is missing; `train_release_body.sh:229-231`
+  has the `|| true` form).
+
+Open:
+
+- [ ] D15 An inference script for LightgenBench users: people outside the lab who download the dataset
+  from Hugging Face and run this baseline from the published fork, without our parent repo. Today the
+  fork can train, but the only script that turns a checkpoint into views is the parent's
+  `evaluation/mvpaint_bridge/predict_emission_views.py` (with `evaluation/newdata_eval/seedutil.py`),
+  and the views-to-UV bridge (`bridge_views_to_uv.py`) is the parent's too. TEXGen-Emission ships its
+  inference script (`inference_specific_samples.py`) with a README command. Recommended: the same
+  here, a fork-side script that writes the same views (Keep stable 12), gated byte-identical against
+  the frozen parent predictor; the parent predictor stays, the bridge stays in the parent, and the
+  README says where it is.
 
 ## Done
 
@@ -301,6 +315,8 @@ New for Hunyuan3D-Emission, open until Dongchen answers (each has a recommendati
    `origin/lightgen`) and this worktree (branch `hunyuan3d-emission-refactor`), 2026-10-06. The tag
    is local and lightweight. `.claude/worktrees/` is excluded through the submodule's local
    `info/exclude`; nothing was committed on `lightgen`.
+2. Decisions D4, D8, D11, D12, D13, D14 answered by Dongchen, 2026-10-10 (§ Decisions); D10 and D15
+   open.
 
 ## Steps
 
@@ -318,7 +334,7 @@ New for Hunyuan3D-Emission, open until Dongchen answers (each has a recommendati
 
 **Result:**
 
-### 2. Check setup: inference gate, tests, training check, noise baselines (no code change)
+### 2. Check setup: inference gate, tests, training check, noise envelopes (no code change)
 
 All runs on tag `pre-refactor`. Tooling goes in `hy3dpaint/scripts/internal/gate/` (committed in this
 step); data and run outputs in `C` (above), outside the repo.
@@ -334,27 +350,31 @@ step); data and run outputs in `C` (above), outside the repo.
   `render_tex/`, `render_cond/000.png`) and their thumbnails,
   copied from jupiter, with an examples JSON of the local paths; the 200 release dirs, `thumbs/` and
   the filled release config, copied from `/local-scratch/localhome/dya78/lightgen_release_{test200,val200}/`.
-- [ ] `gate.sh <tree> <out> paper|release [<shas_file>]`: both 4090 locks, the 28 GB `MemAvailable`
-  wait, the `hunyuanpaint` env activated by path (never `conda run`), `PYTHONNOUSERSITE=1`, a fresh
+- [ ] `gate.sh <tree> <out> paper|release [<shas_file>]`: both 4090 locks taken without waiting, the
+  `hunyuanpaint` env activated by path (never `conda run`), `PYTHONNOUSERSITE=1`, a fresh
   `HF_MODULES_CACHE` under `<out>`, the predictor call above (a subset filters the examples JSON),
-  `nvidia-smi --query-compute-apps` and the lock wait in the log, a tee to `log/<TS>-hunyuan-gate-<name>.log`,
+  `nvidia-smi --query-compute-apps` in the log, a tee to `log/<TS>-hunyuan-gate-<name>.log`,
   `GATE_DONE` at the end. Fix the two subsets: `paper_subset20.txt`, `release_subset20.txt`.
-- [ ] `compare_views.py`: per shape and view, byte identity and the mean and max absolute pixel
-  difference; verdict IDENTICAL, WITHIN_NOISE or DIFFERENT; counts `same`, `different`, `missing`;
-  refuses empty input. Start from TEXGen's `scripts/internal/gate/compare_numeric.py` (its NaN guards
-  and verdicts; its file list and layout are TEXGen's). A view-level difference is sized, when it
+- [ ] `compare_views.py`: per shape and view, byte identity, the mean and max absolute pixel
+  difference and the share of differing values; the pass rule (the 1/255-on-0.5% tolerance, then the
+  envelope); verdict IDENTICAL, WITHIN_NOISE or DIFFERENT; counts `same`, `different`, `missing`;
+  refuses empty input. Start from TEXGen-Emission's `scripts/internal/gate/compare_numeric.py` (its
+  tolerance, envelope cache and verdicts; its file list and layout are TEXGen's). A view-level difference is sized, when it
   happens, by bridging and scoring the affected shapes (`../evaluation/mvpaint_bridge/bridge_batch.py
   --blacken_bg`, then `evaluation/pointsampled/`); that is a record, not a pass.
-- [ ] Gate noise on the workstation 4090: two normal-mode runs of each gate (full 204 and 200), and
-  the release run also against the 2026-09-22 views
-  `/local-scratch/localhome/dya78/lightgen_release_test200/views_step00040000/<sha>/seed00/`. If the two
-  runs are byte-identical, gates run in normal mode, as every published view was made. If not,
-  measure deterministic mode (TEXGen's `detmode/sitecustomize.py`, its env var renamed;
-  `CUBLAS_WORKSPACE_CONFIG=:4096:8`) and gate in that mode.
-- [ ] xg4090 (it has the `hunyuanpaint` env, `../evaluation/newdata_eval/sweeps/hosts.json`): one run
-  of each gate, compared with the workstation's. If identical, the full gates split their shape lists
-  across both machines; if not, xg4090 gets its own baseline or is not used. sp4090 has no
-  `hunyuanpaint` env: skip it.
+- [ ] Envelopes on the 4090: at least 4 normal-mode runs of each gate (full 204 and 200), and the
+  release gate also against the 2026-09-22 views
+  `/local-scratch/localhome/dya78/lightgen_release_test200/views_step00040000/<sha>/seed00/`. Normal
+  mode is how every published view was made; if its runs disagree beyond the tolerance, measure
+  deterministic mode (TEXGen's `detmode/sitecustomize.py`, its env var renamed;
+  `CUBLAS_WORKSPACE_CONFIG=:4096:8`) and gate in the mode with the smaller envelope.
+- [ ] Lab 4090s: xg4090 has the `hunyuanpaint` env (`../evaluation/newdata_eval/sweeps/hosts.json`),
+  sp4090 has none (stage it or skip it). A lab 4090 is admitted when one run of each gate there is
+  IDENTICAL to the workstation's on every shape (TEXGen's `fanout.py --qualify`); then the full gates
+  split their shape lists across the admitted 4090s.
+- [ ] A fan-out driver after TEXGen-Emission's `fanout.py`: probe the candidate GPUs once, dispatch
+  only to the free ones, split the full gates, run the training checks beside them, compare, print
+  one verdict (PASS, FAIL, INCOMPLETE, NOTHING_FREE).
 - [ ] Training check root `C/train_root`: 16 train and 2 val shapes from the local release val copy
   (`/local-scratch/localhome/dya78/lightgen_release_val200/release/<uuid>/` and `thumbs/`), fixed in
   `train_root_splits.json`; the example JSONs from `make_74k_jsons.py`; a check config made from the
@@ -375,8 +395,8 @@ step); data and run outputs in `C` (above), outside the repo.
   `../docs/baselines/hunyuan3d-paint.md:280-281,288`). Solar L40S with the `hunyuanpaint` conda-pack (jupiter
   `trellis2_bw/eval_inputs/solar_hunyuan_stage/hunyuanpaint_env.tar.gz`, unpacked into our own
   directory, not the star2 worker's); never measured on 48 GB, so if batch 1 or the resume does not
-  fit, an RTX PRO 6000 node. `star2/checks.sbatch` after TEXGen's. Two runs of each mode on
-  `pre-refactor` for the training noise.
+  fit, an RTX PRO 6000 node. `star2/checks.sbatch` after TEXGen's. At least 4 runs of each mode on
+  `pre-refactor` for the training envelope.
 - [ ] Tests, with counts recorded: the fork's 18 (`scripts/lightgen/test_lightgen_emission_loader.py`
   9, `test_make_74k_jsons.py` 5, `test_relayout_release.py` 4; about 9 s; from `hy3dpaint/`,
   `PYTHONNOUSERSITE=1 python -m pytest -q scripts/lightgen/test_*.py`); the parent's
@@ -410,20 +430,7 @@ Checks: the subset gates, the tests.
 
 **Result:**
 
-### 4. Upstream's demo, app and API layer (per D12)
-
-- [ ] With D12 as recommended, delete the files D12 lists. Keep `hy3dshape/`, `hy3dpaint`'s library
-  code, `train_examples/` (Keep stable 9), `README.md`, `LICENSE`, `Notice.txt`, `requirements.txt`
-  (step 12).
-- [ ] Upstream's root `README.md` and `hy3dpaint/README.md` keep naming the deleted demo and API files
-  until step 14 rewrites them (the exception to the same-step rule: they are upstream's docs).
-
-Checks: a grep of the kept tree for each deleted name (only the two READMEs may hit); the subset
-gates; the tests.
-
-**Instructions:**
-
-**Result:**
+### 4. Dropped: upstream's demo, app and API layer stays (D12)
 
 ### 5. Launchers (per D14)
 
@@ -507,26 +514,58 @@ upstream code (D9).
 
 **Result:**
 
-### 8. Our model `hunyuanpaintpbr/model_emission.py` (per D13)
+### 8. Fold our model and loader into upstream's originals (per D13)
 
-Stays a subclass in its own file. Cleanups only, one commit each if they touch code:
+| ours | upstream original |
+|---|---|
+| `src/data/dataloader/lightgen_emission_loader.py` `LightgenEmissionDataset` (subclass of `BaseDataset`) | `src/data/dataloader/objaverse_loader_forTexturePBR.py:25` `TextureDataset` |
+| `hunyuanpaintpbr/model_emission.py` `HunyuanPaintEmission` (subclass; overrides `__init__`, `training_step`, `validation_step`; adds nine helpers) | `hunyuanpaintpbr/unet/model.py:47` `HunyuanPaint` |
 
-- [ ] Stale docstrings: `:13-22` and `:38-41` (a 12-channel stack into a 20-channel conv_in; the
-  default is 24).
+Each fold moves our code into the original file, editing upstream's class in place: our methods
+replace upstream's, our helpers join them, and upstream methods ours do not replace stay as they are
+(D9). Our file becomes a one-line re-export until step 15 (D13); the release config template names
+the new path in the same commit (the `-fir-xg` config keeps its bytes, D14). One commit per fold, in
+this order. The commit message names the upstream behavior each edit replaces (`TextureDataset`'s
+glob-picked random views and lighting-suffix reference pairs; `HunyuanPaint`'s two-slot
+`training_step` with its dual-reference loss, its `validation_step` through `pipeline.__call__`) and
+what the fold changes observably (the class name in logs and in a new logdir's `configs/project.yaml`).
+
+- [ ] 8a. Loader: `LightgenEmissionDataset` → `TextureDataset`, with our constructor (Keep stable 7).
+  The loader tests move to the new path. Full gates, the training check, the tests.
+- [ ] 8b. Model: `HunyuanPaintEmission` → `HunyuanPaint`. Unchanged: Keep stable 4, 5 and 6 (attribute
+  names, the panel, the RNG draw order); `_swap_in_fork_unet` (building the repo class directly is
+  under Later); our condition-dropout fix (`model_emission.py:341-379`; upstream's
+  `unet/model.py:363,367` test a key that never exists, so upstream never drops normal and position).
+  Full gates, the training check fresh and resume, the tests.
+
+**Instructions:**
+
+**Result:**
+
+### 9. Cleanups inside the folded code
+
+No behavior change; one commit each where code changes. Line numbers are from before the folds.
+
+- [ ] Stale docstrings: `model_emission.py:13-22` and `:38-41` (a 12-channel stack into a 20-channel
+  conv_in; the default is 24).
 - [ ] The conv_in channel layout `[noisy 0-3 | normal 4-7 | position 8-11 | albedo 12-15 | mr 16-19 |
   alpha 20-23]` is spelled out three times (the guard in `unet/modules.py:965-990`,
-  `_assert_condition_channel_layout` and `_stack_description` at `:283-339`, the docstring): one
-  definition, the others refer to it.
+  `_assert_condition_channel_layout` and `_stack_description` at `model_emission.py:283-339`, the
+  docstring): one definition, the others refer to it.
 - [ ] Branches step 7 shows never run and no switch reaches: `if normal_imgs/position_imgs is not
-  None` (`:266-270`), `self.unet.use_dino` (`:276`, `:368`; hardcoded True at `unet/modules.py:788`),
-  `getattr(self, "_trainer")` (`:410`; false only in the smoke script deleted in step 3), the alpha
-  check at `:319-323`. Remove only with the coverage record behind it.
-- [ ] `_resize01` (`:243-246`) duplicates the resize in `prepare_batch_data` (`unet/model.py:179-181`):
-  reuse it only if the gate stays byte-identical.
-- Unchanged: Keep stable 4, 5 and 6; `_swap_in_fork_unet` (`:124-168`; building the repo class
-  directly is under Later); the condition-dropout fix in `_apply_condition_dropout` (`:341-379`;
-  upstream's `model.py:363,367` test a key that never exists, so upstream never drops normal and
-  position); `LIGHTGEN_VAL_STEPS` (Keep stable 5).
+  None` (`model_emission.py:266-270`), `self.unet.use_dino` (`:276`, `:368`; hardcoded True at
+  `unet/modules.py:788`), `getattr(self, "_trainer")` (`:410`; false only in the smoke script deleted
+  in step 3), the alpha check at `:319-323`. Remove only with the coverage record behind it.
+- [ ] `_resize01` (`model_emission.py:243-246`) duplicates the resize in `prepare_batch_data`
+  (`unet/model.py:179-181`), now in the same class: reuse it only if the gates stay within tolerance.
+- [ ] The loader's `MAPS` comment (`lightgen_emission_loader.py:60-62`) says the loader order is the
+  conv_in order; it is not, and the model reads the maps by key. Stale citations: `:57` names
+  `data_processing/multiview_render_pipeline/append_alpha_views.py` (now
+  `data_processing/archive/multiview_render_pipeline_74k/`); `:64` cites upstream
+  `objaverse_loader_forTexturePBR.py:52-54` for the background colors (they are at `:51-53`, in the
+  same file after the fold). The loader test's unused `FIXTURE_ROOT` (`test_lightgen_emission_loader.py:25-27`).
+- Unchanged: `images_cond` stacks the reference twice (slot 1 is never used, but it is the model's
+  input shape); the decode guard; `LIGHTGEN_VAL_STEPS` (Keep stable 5).
 
 Checks: the full gates; the training check, fresh and resume; the tests.
 
@@ -534,24 +573,7 @@ Checks: the full gates; the training check, fresh and resume; the tests.
 
 **Result:**
 
-### 9. Our loader `src/data/dataloader/lightgen_emission_loader.py` (per D13)
-
-- [ ] The `MAPS` comment (`:60-62`) says the loader order is the conv_in order; it is not, and the
-  model reads the maps by key.
-- [ ] Stale citations: `:57` names `data_processing/multiview_render_pipeline/append_alpha_views.py`
-  (now `data_processing/archive/multiview_render_pipeline_74k/`); `:64` cites upstream
-  `objaverse_loader_forTexturePBR.py:52-54` for the background colors (they are at `:51-53`).
-- [ ] The loader test's unused `FIXTURE_ROOT` (`test_lightgen_emission_loader.py:25-27`).
-- Unchanged: Keep stable 7; `images_cond` stacks the reference twice (slot 1 is never used, but it is
-  the model's input shape); the decode guard.
-
-Checks: the full gates; the training check; the tests.
-
-**Instructions:**
-
-**Result:**
-
-### 10. Our edits inside upstream's files
+### 10. Our other edits inside upstream's files
 
 Each stays a minimal edit in place; `git diff main -- <file>` is its record. One commit per file,
 only where something changes.
@@ -665,19 +687,25 @@ One doc of record inside the fork, keeping upstream's attribution, license and c
 
 **Result:**
 
-### 15. Merge (per D11) and the directory name (per D4) (needs Dongchen's go)
+### 15. Branch `release` (per D11) and the rename to `Hunyuan3D-Emission/` (per D4) (needs Dongchen's go)
 
 - [ ] The full gates and the training check on the branch head against the `pre-refactor`
   baselines; the tests.
-- [ ] Merge into `lightgen` per D11, when no job runs from a clone of it.
-- [ ] In the parent, one commit: the gitlink bump and, per D4, the rename (`.gitmodules`, the
-  gitlink, every parent reference: search again; on 2026-10-06 the predictor's default root `:70`,
+- [ ] Create `release` at this branch's head (D11); `lightgen` stays at `pre-refactor`.
+- [ ] Delete the two re-exports of D13 and add `scripts/convert_config.py` (old class paths → new,
+  in a stored config); the parent predictor converts `--config` on the fly and imports the loader
+  from its new path, as TEXGen-Emission's `run_texgen_infer.py` does; `test_predict_ref_source.py:14`
+  moves too. Smoke: the paper and release checkpoints through the converted path, 2 shapes each,
+  against their 4090 baselines.
+- [ ] In the parent, one commit: the gitlink bump, `.gitmodules` `branch = release`, and the rename
+  per D4 (`git mv Hunyuan3DPaint-emissive Hunyuan3D-Emission`, the submodule's name stays, then
+  `git -C Hunyuan3D-Emission worktree repair`; every parent reference: search again; on 2026-10-06 the predictor's default root `:70`,
   its error message and the init command it suggests `:123-125`, its docstring and help `:45,53,321`, `../evaluation/newdata_eval/sweeps/{job_hunyuan.sh,
   stage_hunyuan_host.sh, star2/hunyuan_worker.sbatch, hosts.json}`, `../data_processing/data_preparation/hunyuan_cameras.py:38-41`
   and its test, `../paper_figures/baseline_pipelines/{gen_panel_hunyuan.py:1-7, README.md:58-70}`
   (also stale on the reference image and the channel count), the `run_xg.sh` of Keep stable 3,
-  and outside the repo the release drivers of Keep stable 1). With D14's alternative, the four
-  scripts that name the `-fir-xg` config point at jupiter's `config.yaml`.
+  and outside the repo the release drivers of Keep stable 1). Stage only this work's hunks: other
+  sessions leave uncommitted edits in the parent.
 - [ ] Parent docs: `../AGENTS.md:34,56,66,176` (`:66` names `submit_chain_fir.sh`; the release run
   used `submit_release.sh`), a new `../.claude/rules/hunyuan3d.md` (path-scoped like `texgen.md` and
   `trellis2.md`; listed in `AGENTS.md`), `../docs/baselines/hunyuan3d-paint.md:5-7,28-35,50,162-190,279,290`,
@@ -693,21 +721,35 @@ One doc of record inside the fork, keeping upstream's attribution, license and c
   needs a local `trough-step=00020000.ckpt` that is gone; `test_bridge.py:402,417` pin their cwd to
   the main checkout; the predictor's docstring (`:259-260`) counts 5 VAE `posterior.sample()` calls at
   `unet/model.py:233` (there are six, at `:234`); the two 4090 lock files.
-- [ ] Decide here: rename the GitHub repository `dongchen-yang/Hunyuan3D-2.1` too?
+- [ ] Decide here: rename the GitHub repository `dongchen-yang/Hunyuan3D-2.1` too (TEXGen kept its
+  name)? Push `release` only on Dongchen's go.
 
 **Instructions:**
 
 **Result:**
 
-### 16. Cut-over (optional, per D8)
+### 16. Cut-over (per D8)
 
 - [ ] Solar: rebuild jupiter `trellis2_bw/eval_inputs/solar_hunyuan_stage/Hunyuan3DPaint-emissive.tar`
   from the merged tree (it unpacks to the directory name), update `CFG_REL` in
   `hunyuan_worker.sbatch`, and delete the nodes' `BOOTSTRAP_OK` and `.fork_ok` so they unpack it
   again.
 - [ ] xg4090: restage `lightgen_sweep_stage/Hunyuan3DPaint-emissive` (`hosts.json:13`).
-- [ ] The Alliance clones (`Hunyuan3D-2.1-emissive` on fir, killarney, rorqual, nibi): pull the
-  merged `lightgen`.
+- [ ] The Alliance clones (`Hunyuan3D-2.1-emissive` on fir, killarney, rorqual, nibi): check out
+  `release` (the release launchers' `.commit` pinning keeps past campaigns on their commits).
+
+**Instructions:**
+
+**Result:**
+
+### 17. Release cut: our internal files leave the published tree (per D10)
+
+Runs after step 15's final check, which needs the tooling.
+
+- [ ] Tag the last commit that has it (`checks-tooling`), so a later check can restore it.
+- [ ] Per D10: delete `scripts/internal/` (the gate and our cluster launchers) and the doc's section
+  on checking a code change (one line pointing at the tag stays); decide `REFACTOR_TODO.md` and
+  `CLAUDE.md` with it.
 
 **Instructions:**
 
