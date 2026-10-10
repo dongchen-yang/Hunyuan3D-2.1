@@ -6,7 +6,9 @@
    "shas": "shas.txt",
    "envelope": [
     "/local-scratch/localhome/dya78/lightgen_eval_local/hunyuan_refactor_checks/out/rtx4090/pre-refactor_paper_full_run1",
-    "/local-scratch/localhome/dya78/lightgen_eval_local/hunyuan_refactor_checks/out/rtx4090/pre-refactor_paper_full_run2"
+    "/local-scratch/localhome/dya78/lightgen_eval_local/hunyuan_refactor_checks/out/rtx4090/pre-refactor_paper_full_run2",
+    "/local-scratch/localhome/dya78/lightgen_eval_local/hunyuan_refactor_checks/out/rtx4090/pre-refactor_paper_full_run3",
+    "/local-scratch/localhome/dya78/lightgen_eval_local/hunyuan_refactor_checks/out/rtx4090/pre-refactor_paper_full_run4"
    ]
   },
   "release": {
@@ -15,6 +17,7 @@
    "envelope": [
     "/local-scratch/localhome/dya78/lightgen_eval_local/hunyuan_refactor_checks/out/rtx4090/pre-refactor_release_full_run1",
     "/local-scratch/localhome/dya78/lightgen_eval_local/hunyuan_refactor_checks/out/rtx4090/pre-refactor_release_full_run2",
+    "/local-scratch/localhome/dya78/lightgen_eval_local/hunyuan_refactor_checks/out/rtx4090/pre-refactor_release_full_run3",
     "/local-scratch/localhome/dya78/lightgen_release_test200/views_step00040000"
    ]
   }
