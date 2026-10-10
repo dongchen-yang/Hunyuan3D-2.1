@@ -186,3 +186,6 @@ hy3dpaint/ckpt/
 
 # lightgen: local run logs / smoke-test artifacts
 log/
+
+# lightgen: agent worktrees (a worktree under .claude/ would otherwise be committed as a gitlink)
+.claude/

@@ -14,7 +14,7 @@ same for `plans/2026-09-16-hunyuan3d-paint-refactor.md`); use them as a source o
 
 ## Progress
 
-- [ ] 1. Housekeeping (tag, worktree and this plan done)
+- [x] 1. Housekeeping
 - [ ] 2. Check setup: inference gate, tests, training check, noise envelopes (no code change)
 - [ ] 3. Dead one-off scripts
 - [x] 4. Dropped: upstream's demo, app and API layer stays (D12)
@@ -324,15 +324,16 @@ Open:
 
 - [x] Tag `pre-refactor` and the worktree (Done 1).
 - [x] This plan on the branch (`REFACTOR_TODO.md`).
-- [ ] `.claude/` in `.gitignore` (the September spec's decision 9; it reaches `lightgen` at the merge).
-- [ ] Leave the dangling annotated tag object `e4d3a55` (the September `pre-trim-2026-09-16`, deleted
+- [x] `.claude/` in `.gitignore` (the September spec's decision 9; it reaches the branch of record at step 15).
+- [x] Leave the dangling annotated tag object `e4d3a55` (the September `pre-trim-2026-09-16`, deleted
   by name) alone; `git gc` may prune it.
-- [ ] `../docs/status/refactor.md` has no Hunyuan entry, not even for the September attempt: add one
-  at the merge (step 15's list).
+- [x] `../docs/status/refactor.md` has no Hunyuan entry, not even for the September attempt: added
+  to step 15's list.
 
 **Instructions:**
 
-**Result:**
+**Result:** `.gitignore` ignores `.claude/` (`.gitignore:191`, `git check-ignore`); the plan on the
+branch (`b14e382`, `483155f`). Tests 18/18 passed, no skip. PASS.
 
 ### 2. Check setup: inference gate, tests, training check, noise envelopes (no code change)
 
