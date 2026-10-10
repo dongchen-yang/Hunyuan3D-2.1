@@ -42,7 +42,7 @@ Run it on the node that will train, so A3/A7 look at the real staged filesystem:
         --train_shas  /localscratch/dya78/lightgen_mvpaint/v2_shas/v2_train_shas.txt \
         --val_shas    /localscratch/dya78/lightgen_mvpaint/v2_shas/v2_val_shas.txt \
         --test_shas   /localscratch/dya78/lightgen_mvpaint/v2_shas/v2_test_shas.txt \
-        --val64_shas  scripts/lightgen/val64_v2_shas.txt \
+        --val64_shas  <val64 sha list, e.g. scripts/lightgen/val64_release_shas.txt> \
         --fixture_root /localscratch/dya78/lightgen_mvpaint/mv74k \
         --thumbnail_dir /localscratch/dya78/lightgen_mvpaint/thumbnails \   # thumbnail-reference runs only
         --out_train   /localscratch/dya78/lightgen_mvpaint/mv74k_train.json \

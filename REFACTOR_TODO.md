@@ -18,7 +18,7 @@ same for `plans/2026-09-16-hunyuan3d-paint-refactor.md`); use them as a source o
 - [x] 2. Check setup: inference gate, tests, training check, noise envelopes (no code change)
 - [x] 3. Dead one-off scripts
 - [x] 4. Dropped: upstream's demo, app and API layer stays (D12)
-- [ ] 5. Launchers (per D14)
+- [x] 5. Launchers (per D14)
 - [ ] 5b. Move the kept cluster scripts into `hy3dpaint/scripts/internal/`
 - [ ] 6. Configs (per D14)
 - [ ] 7. Coverage run (no code change)
@@ -393,7 +393,7 @@ test, `make_74k_jsons.py` and its test, `make_val_subset.py`, `val64_release_sha
 and `smoke_load_pretrained.py` (step 12), `test_lightgen_emission_loader.py` and `pilot10_local.json`
 (the loader test's fixture list).
 
-- [ ] Deleted, with D14 as recommended: `train_74k.sbatch`, `train_74k_alpha.sbatch`,
+- [x] Deleted (D14): `train_74k.sbatch`, `train_74k_alpha.sbatch`,
   `train_74k_alpha_fir.sbatch`, `train_74k_alpha_nonzero_nocopy_fir.sbatch`,
   `train_74k_alpha_nonzero_nocopy_venus05.sbatch`, `train_74k_alpha_thumb_agentic_fir.sbatch`,
   `train_74k_alpha_thumb_agentic_fir_xg.sbatch`, `train_74k_alpha_thumb_agentic_venus05.sbatch` (never
@@ -401,7 +401,7 @@ and `smoke_load_pretrained.py` (step 12), `test_lightgen_emission_loader.py` and
   `infer_troughs_fir.sbatch`, `infer_t50k_seeds_fir.sbatch` (one-off `_v2 + alpha` inference that
   copies the parent predictor), `submit_chain_fir.sh`, `stage_fir.sh` and `env_setup_fir.sh` (both
   replaced by `stage_alliance.sh`), `val64_v2_shas.txt` (read only by the 74k-era launchers).
-- [ ] Fix the comments in kept files that name them: `train_release_body.sh:12`,
+- [x] Fix the comments in kept files that name them: `train_release_body.sh:12`,
   `stage_alliance.sh:12,46`, the release config `:43`, `make_74k_jsons.py:46`, `make_val_subset.py:25`.
   The `-fir-xg` config's comment `:50` stays (D14). `../AGENTS.md:66` names `submit_chain_fir.sh` as
   the training command: step 15's list.
@@ -413,7 +413,8 @@ difference); the subset gates; the tests.
 
 **Instructions:**
 
-**Result:**
+**Result:** 17 files deleted, 5 comment lines in kept files point at `pre-refactor` or `cdcae12`. Subset gates
+IDENTICAL (job 296027); tests 18/18; `--dry-run` job files equal on all six clusters but the reworded comment. PASS.
 
 ### 5b. Move the kept cluster scripts into `hy3dpaint/scripts/internal/`
 

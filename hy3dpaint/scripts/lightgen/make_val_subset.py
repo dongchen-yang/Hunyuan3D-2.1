@@ -22,7 +22,7 @@ Usage:
     # sha list only (fixture not staged yet):
     python make_val_subset.py \
         --val_shas ../../data_processing/multiview_render_pipeline/v2_val_shas.txt \
-        --n 64 --out_shas scripts/lightgen/val64_v2_shas.txt
+        --n 64 --out_shas scripts/lightgen/val64_release_shas.txt
 
     # sha list + examples json for a staged fixture:
     python make_val_subset.py --val_shas <...> --out_shas <...> \

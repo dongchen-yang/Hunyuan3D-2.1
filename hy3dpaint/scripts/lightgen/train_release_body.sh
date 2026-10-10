@@ -9,7 +9,7 @@
 # COMMIT gate below (there is no in-job `git pull`: nibi, rorqual and trillium compute nodes
 # have no route to GitHub, and the pull happens on the login node at submit time instead).
 #
-# The recipe is the paper run's (scripts/lightgen/train_74k_alpha_thumb_agentic_fir.sbatch:
+# The recipe is the paper run's (its launcher train_74k_alpha_thumb_agentic_fir.sbatch, at cdcae12:
 # same gates, same env, same train.py call, same 50,000 steps at global batch 16). What
 # changed is the data staging: the release ships per-representation tar shards with the layout
 #     <uuid>/multiview/*.png + transforms.json      <uuid>/thumbnail.png

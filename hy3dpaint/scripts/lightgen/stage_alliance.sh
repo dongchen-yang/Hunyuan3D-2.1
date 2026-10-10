@@ -9,8 +9,8 @@
 # STAGE_ALLIANCE_OK. Long step: `data` (37 GB from Hugging Face); run the script under nohup
 # with its output in <root>/log/ and poll that file.
 #
-# env and weights are scripts/lightgen/env_setup_fir.sh and stage_fir.sh with the root made a
-# variable -- read those two for why each package and each pin is what it is (training-only
+# env and weights are the fir-only env_setup_fir.sh and stage_fir.sh (at tag pre-refactor) with the
+# root made a variable -- read those two for why each package and each pin is what it is (training-only
 # package set, diffusers 0.30.0 from PyPI, the pinned Hunyuan3D-2.1 revision, dinov2-giant).
 # The Alliance wheelhouse and module tree are the same CVMFS stack on every cluster.
 #
@@ -43,7 +43,7 @@ step_env() {
     pip install --no-index --upgrade pip
     pip install --no-index torch==2.11.0 torchvision
     pip install --no-index pytorch_lightning==1.9.5 transformers==4.46.2 numpy pillow einops omegaconf tqdm wandb pytest
-    pip install diffusers==0.30.0          # not in the wheelhouse; see env_setup_fir.sh DEVIATION 2
+    pip install diffusers==0.30.0          # not in the wheelhouse (env_setup_fir.sh DEVIATION 2, tag pre-refactor)
     python - <<'PY'
 import torch, torchvision, pytorch_lightning, diffusers, transformers
 print("torch       ", torch.__version__, "cuda", torch.version.cuda)

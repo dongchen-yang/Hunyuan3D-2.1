@@ -40,7 +40,7 @@ model:
     noise_in_channels: 24
 
     stable_diffusion_config:
-      # Path is deterministic, not copied by hand: scripts/lightgen/stage_fir.sh pins
+      # Path is deterministic, not copied by hand: scripts/lightgen/stage_alliance.sh pins
       # revision 0b94677654c57bb9a6b6845cd7b704ccf551d327 -- the same snapshot the venus env
       # runs -- so HF_HOME/hub/models--<repo>/snapshots/<rev>/ resolves to exactly this.
       # Pinning the revision is what makes fir and venus the same weights rather than
