@@ -61,6 +61,16 @@ export HF_MODULES_CACHE=$OUT/.hf_modules HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1
 if [ "${GATE_DETMODE:-0}" = 1 ]; then
   export HUNYUAN_GATE_DETERMINISTIC=1 CUBLAS_WORKSPACE_CONFIG=:4096:8 PYTHONPATH=$HERE/detmode${PYTHONPATH:+:$PYTHONPATH}
 fi
+if [ "${HUNYUAN_COVERAGE:-0}" = 1 ]; then   # step 7: line coverage of the tree under test, every process
+  cat > "$OUT/.coveragerc" <<EOT
+[run]
+parallel = True
+concurrency = multiprocessing,thread
+source = $TREE/hy3dpaint
+data_file = $OUT/.coverage
+EOT
+  export COVERAGE_PROCESS_START=$OUT/.coveragerc PYTHONPATH=$HERE/detmode:${GATE_PYLIB:-$C/tooling/pylib}${PYTHONPATH:+:$PYTHONPATH}
+fi
 echo "host=$(hostname -s) gpu=$(nvidia-smi --query-gpu=name --format=csv,noheader -i "${CUDA_VISIBLE_DEVICES:-0}" | head -1) detmode=${GATE_DETMODE:-0}" | tee "$OUT/gpu.txt"
 nvidia-smi --query-compute-apps=pid,used_memory --format=csv,noheader || true
 
@@ -85,4 +95,7 @@ python "$PRED" --ckpt "$CKPT" --config "$CFG" --examples_json "$JSON" --thumbnai
 got=$(find "$OUT" -mindepth 2 -maxdepth 2 -type d -name seed00 | wc -l)
 [ "$got" = "$N" ] || { echo "ABORT: $got of $N shapes written"; exit 1; }
 rm -rf "$OUT/.hf_modules"
+if [ "${HUNYUAN_COVERAGE:-0}" = 1 ]; then
+  ( unset COVERAGE_PROCESS_START; export PYTHONPATH=${GATE_PYLIB:-$C/tooling/pylib}; cd "$OUT" && python -m coverage combine --rcfile .coveragerc -q && python -m coverage json --rcfile .coveragerc -q -i -o coverage.json ) || { echo "ABORT: coverage combine failed"; exit 4; }
+fi
 echo GATE_DONE

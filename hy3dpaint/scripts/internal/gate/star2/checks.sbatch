@@ -89,27 +89,29 @@ for r in paper release train; do
   $SYNC --delete "$H/inputs/$r/" "$LS/inputs/$r/" && (cd "$LS/inputs/$r" && sha256sum -c --quiet MANIFEST.sha256) || die "inputs $r"
 done
 mkdir -p "$LS/tooling" && $SYNC --delete "$H/tooling/repo/" "$LS/tooling/repo/" || die "tooling"
+[ ! -d "$H/tooling/pylib" ] || $SYNC --delete "$H/tooling/pylib/" "$LS/tooling/pylib/" || die "pylib"
 flock -u 8
 ( set +u; source "$ACT"; set -u; python -c "import torch; print('[probe] torch', torch.__version__, torch.cuda.device_count(), 'GPUs')" ) || die "env probe"
 
-export GATE_C=$LS GATE_ACTIVATE=$ACT GATE_SNAPSHOT=$SNAP GATE_LOCKS=none TRAINCHECK_TMPBASE=/localscratch/dya78/tmp
+export GATE_PYLIB=$LS/tooling/pylib GATE_C=$LS GATE_ACTIVATE=$ACT GATE_SNAPSHOT=$SNAP GATE_LOCKS=none TRAINCHECK_TMPBASE=/localscratch/dya78/tmp
 TASKS=()
 while read -r g name kind tree shas; do
   [ -n "${g:-}" ] || continue
   [ -d "$H/trees/$tree/hy3dpaint" ] || die "task $name: no tree $H/trees/$tree"
   case $shas in "") ;; subset20) ;; *) shas=$H/$shas ;; esac
-  case $kind in paper|release|fresh|resume) ;; *) die "task file: unknown kind $kind" ;; esac
+  case $kind in paper|release|fresh|resume|paper+cov|release+cov|fresh+cov|resume+cov) ;; *) die "task file: unknown kind $kind" ;; esac
   TASKS+=("$g|$name|$kind|$H/trees/$tree|$shas")
 done < "$H/$TASKFILE"
 run_queue() {
-  local gq=$1 t g name kind tree shas rc s
+  local gq=$1 t g name kind tree shas rc s cov
   for t in "${TASKS[@]}"; do
     IFS='|' read -r g name kind tree shas <<< "$t"
     [ "$g" = "$gq" ] || continue
-    say "launch $name ($kind, $(basename "$tree")) on gpu $g"; s=$(date +%s)
+    cov=0; case $kind in *+cov) cov=1; kind=${kind%+cov} ;; esac
+    say "launch $name ($kind, $(basename "$tree"), coverage=$cov) on gpu $g"; s=$(date +%s)
     case $kind in
-      paper|release) CUDA_VISIBLE_DEVICES=${DEVS[$g]} bash "$GT/gate.sh" "$tree" "$OUT/$name" "$kind" ${shas:+"$shas"} > "$OUT/logs/$name.log" 2>&1 ;;
-      fresh|resume)  CUDA_VISIBLE_DEVICES=${DEVS[$g]} bash "$GT/train-check.sh" "$tree" "$OUT/$name" "$kind" > "$OUT/logs/$name.log" 2>&1 ;;
+      paper|release) HUNYUAN_COVERAGE=$cov CUDA_VISIBLE_DEVICES=${DEVS[$g]} bash "$GT/gate.sh" "$tree" "$OUT/$name" "$kind" ${shas:+"$shas"} > "$OUT/logs/$name.log" 2>&1 ;;
+      fresh|resume)  HUNYUAN_COVERAGE=$cov CUDA_VISIBLE_DEVICES=${DEVS[$g]} bash "$GT/train-check.sh" "$tree" "$OUT/$name" "$kind" > "$OUT/logs/$name.log" 2>&1 ;;
     esac
     rc=$?; echo "$name exit=$rc secs=$(( $(date +%s) - s )) $(tail -1 "$OUT/logs/$name.log")" | tee -a "$OUT/status.g$gq"
   done
@@ -128,6 +130,7 @@ for d in "$OUT"/*/; do
   case $n in logs|gate) continue ;; esac
   mkdir -p "$HOUT/$n"
   $SYNC "$d"/gpu.txt "$HOUT/$n/" 2>/dev/null
+  [ -f "$d/coverage.json" ] && { $SYNC "$d/coverage.json" "$HOUT/$n/" || RC=1; }
   if [ -f "$d/record.jsonl" ]; then $SYNC "$d/record.jsonl" "$d/traincheck.yaml" "$HOUT/$n/" || RC=1; continue; fi
   $SYNC --include='*/' --include='*.png' --include='manifest.json' --exclude='*' "$d/" "$HOUT/$n/" || RC=1
 done

@@ -1,4 +1,7 @@
 import os
+if os.environ.get("COVERAGE_PROCESS_START"):   # a coverage run (HUNYUAN_COVERAGE=1 in gate.sh / train-check.sh)
+    import coverage
+    coverage.process_startup()
 if os.environ.get("HUNYUAN_GATE_DETERMINISTIC") == "1":
     import sys
     import torch

@@ -21,7 +21,7 @@ same for `plans/2026-09-16-hunyuan3d-paint-refactor.md`); use them as a source o
 - [x] 5. Launchers (per D14)
 - [x] 5b. Move the kept cluster scripts into `hy3dpaint/scripts/internal/`
 - [x] 6. Configs (per D14)
-- [ ] 7. Coverage run (no code change)
+- [x] 7. Coverage run (no code change)
 - [ ] 8. Fold our model and loader into upstream's originals (per D13)
 - [ ] 9. Cleanups inside the folded code
 - [ ] 10. Our other edits inside upstream's files
@@ -469,7 +469,9 @@ upstream code (D9).
 
 **Instructions:**
 
-**Result:**
+**Result:** Coverage (`HUNYUAN_COVERAGE=1` in `gate.sh`/`train-check.sh`, `coverage_report.py`) on `ffbda40`: fresh,
+resume, 5 + 5 gate shapes, Blackwell. Never ran (`C/coverage/step7/never_run.txt`): `model_emission.py` 8 of 179 (raises
+314, 320, 329, 338, 377; 136, 163, 209), the loader 29 of 94 (frontal_albedo, argument checks, the decode guard). PASS.
 
 ### 8. Fold our model and loader into upstream's originals (per D13)
 
