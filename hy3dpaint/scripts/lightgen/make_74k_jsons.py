@@ -36,19 +36,19 @@ load-bearing if the way train_kept is built ever changes. A7 certifies structure
 the decode sweep that verifies every PNG actually decodes is a separate step, run against the
 staged root before this script (see the phase-2 task-4 report).
 
-Run it on the node that will train, so A3/A7 look at the real staged filesystem:
+Run it on the node that will train, so A3/A7 look at the real staged filesystem. The release run's
+call (scripts/internal/train_release_body.sh; --thumbnail_dir only for thumbnail-reference runs):
 
     python scripts/lightgen/make_74k_jsons.py \
-        --train_shas  /localscratch/dya78/lightgen_mvpaint/v2_shas/v2_train_shas.txt \
-        --val_shas    /localscratch/dya78/lightgen_mvpaint/v2_shas/v2_val_shas.txt \
-        --test_shas   /localscratch/dya78/lightgen_mvpaint/v2_shas/v2_test_shas.txt \
-        --val64_shas  <val64 sha list, e.g. scripts/lightgen/val64_release_shas.txt> \
-        --fixture_root /localscratch/dya78/lightgen_mvpaint/mv74k \
-        --thumbnail_dir /localscratch/dya78/lightgen_mvpaint/thumbnails \   # thumbnail-reference runs only
-        --out_train   /localscratch/dya78/lightgen_mvpaint/mv74k_train.json \
-        --out_val64   /localscratch/dya78/lightgen_mvpaint/mv74k_val64.json \
-        --expect_train 71645 \
-        --allow_missing 810a644ad9a04b02b10cdf4972d93e70
+        --train_shas  $STAGE/shas/train.txt \
+        --val_shas    $STAGE/shas/val.txt \
+        --test_shas   $STAGE/shas/test.txt \
+        --val64_shas  scripts/lightgen/val64_release_shas.txt \
+        --fixture_root $STAGE/release \
+        --thumbnail_dir $STAGE/thumbs \
+        --out_train   $STAGE/release_train.json \
+        --out_val64   $STAGE/release_val64.json \
+        --expect_train <the train split's size>
 """
 
 import argparse
@@ -66,8 +66,8 @@ SUFFIXES = ("albedo", "emission", "mr", "alpha", "normal", "pos")
 # `alpha` joined the fixture for conditioning parity with the other baselines; a pre-alpha shape
 # holds only 30 and is REJECTED here on purpose -- silently listing it would start a 57-hour run
 # whose dataloader dies on the first batch (or, worse, one that trains on a different condition
-# set than the config claims). Upgrade the fixture with
-# data_processing/multiview_render_pipeline/append_alpha_views.py first.
+# set than the config claims). Upgrade the fixture with the parent repo's
+# data_processing/archive/multiview_render_pipeline_74k/append_alpha_views.py first.
 EXPECT_TEX = {f"{v:03d}_{s}.png" for v in VIEWS for s in SUFFIXES} | {"transforms.json"}
 EXPECT_COND = {"000.png"}
 

@@ -21,13 +21,13 @@ Outputs:
 Usage:
     # sha list only (fixture not staged yet):
     python make_val_subset.py \
-        --val_shas ../../data_processing/multiview_render_pipeline/v2_val_shas.txt \
+        --val_shas <the split's val sha list> \
         --n 64 --out_shas scripts/lightgen/val64_release_shas.txt
 
     # sha list + examples json for a staged fixture:
     python make_val_subset.py --val_shas <...> --out_shas <...> \
-        --fixture_root /localscratch/dya78/lightgen_mvpaint/mv74k \
-        --out_json scripts/lightgen/mv74k_val64_venus.json
+        --fixture_root <staged fixture root> \
+        --out_json <val64 examples json>
 """
 
 import argparse

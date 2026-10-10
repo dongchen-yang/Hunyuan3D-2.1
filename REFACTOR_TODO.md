@@ -25,7 +25,7 @@ same for `plans/2026-09-16-hunyuan3d-paint-refactor.md`); use them as a source o
 - [x] 8. Fold our model and loader into upstream's originals (per D13)
 - [x] 9. Cleanups inside the folded code
 - [x] 10. Our other edits inside upstream's files
-- [ ] 11. The JSON builders and the release data scripts
+- [x] 11. The JSON builders and the release data scripts
 - [ ] 12. Environment files
 - [ ] 13. Release layer: generic entry points for LightgenBench users (per D15)
 - [ ] 14. Docs
@@ -577,18 +577,20 @@ IDENTICAL (job 296132). PASS.
 
 ### 11. The JSON builders and the release data scripts
 
-- [ ] `make_74k_jsons.py`: `:48` an invalid escape `\ ` in the docstring (a SyntaxWarning under the
+- [x] `make_74k_jsons.py`: `:48` an invalid escape `\ ` in the docstring (a SyntaxWarning under the
   Alliance Python 3.12); `:71` the stale `append_alpha_views.py` path; `/localscratch` examples in the
   docstring (`:43-50`).
-- [ ] `make_val_subset.py`: `:24` the stale path, `:29` a `/localscratch` example.
-- [ ] `relayout_release.py`: read; nothing known.
+- [x] `make_val_subset.py`: `:24` the stale path, `:29` a `/localscratch` example.
+- [x] `relayout_release.py`: read; it names `LightgenEmissionDataset`, valid until step 15 (its list).
 
-Checks: the tests; rebuilding the training check root's JSONs with the edited builder gives identical
-files; `--dry-run` unchanged.
+Checks: the tests (which run the builder on synthetic fixtures); subset gates. (The training check builds its
+JSONs itself, and the job files embed only the body, so neither depends on these docstrings.)
 
 **Instructions:**
 
-**Result:**
+**Result:** Docstrings only: the usage example is the release run's call (the invalid `\ ` escape went with
+the old one), the archived `append_alpha_views.py` path, placeholders for machine paths. Tests 19/19 with no
+warning (it was 1); subset gates IDENTICAL (job 296135). PASS.
 
 ### 12. Environment files
 
