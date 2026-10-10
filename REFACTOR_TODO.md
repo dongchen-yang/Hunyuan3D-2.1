@@ -20,7 +20,7 @@ same for `plans/2026-09-16-hunyuan3d-paint-refactor.md`); use them as a source o
 - [x] 4. Dropped: upstream's demo, app and API layer stays (D12)
 - [x] 5. Launchers (per D14)
 - [x] 5b. Move the kept cluster scripts into `hy3dpaint/scripts/internal/`
-- [ ] 6. Configs (per D14)
+- [x] 6. Configs (per D14)
 - [ ] 7. Coverage run (no code change)
 - [ ] 8. Fold our model and loader into upstream's originals (per D13)
 - [ ] 9. Cleanups inside the folded code
@@ -433,10 +433,10 @@ equal to `pre-refactor` on all six clusters but comments; subset gates IDENTICAL
 
 ### 6. Configs (per D14)
 
-- [ ] Kept: `cfgs/lightgen-emission-release-alpha-thumb.yaml`,
+- [x] Kept: `cfgs/lightgen-emission-release-alpha-thumb.yaml`,
   `cfgs/lightgen-emission-74k-alpha-thumb-agentic-fir-xg.yaml` (bytes unchanged), upstream's
   `cfgs/hunyuan-paint-pbr.yaml` (D9).
-- [ ] Deleted, with D14 as recommended: `lightgen-emission-74k.yaml` (the `_v2` 20-channel row),
+- [x] Deleted (D14): `lightgen-emission-74k.yaml` (the `_v2` 20-channel row),
   `-74k-alpha.yaml` (never trained), `-74k-alpha-fir.yaml` (the `_v2 + alpha` row),
   `-74k-alpha-nonzero-nocopy.yaml` and `-nonzero-nocopy-venus05.yaml` (the heuristic-filtering row),
   `-74k-alpha-thumb-agentic-fir.yaml` (the paper run's second segment; differs from `-fir-xg` in four
@@ -444,16 +444,17 @@ equal to `pre-refactor` on all six clusters but comments; subset gates IDENTICAL
   `-fir-smoke.yaml`, `-overfit10.yaml`; and `scripts/lightgen/pilot10_venus.json` (read only by
   `-ddp-smoke.yaml` and `-overfit10.yaml`). Their switches stay in code (D6); published manifests that
   record their names are history (`git show pre-refactor:hy3dpaint/cfgs/<file>`).
-- [ ] Fix the release config's header (`:4-6`), which sends readers to the deleted `-fir.yaml` and its
+- [x] Fix the release config's header (`:4-6`), which sends readers to the deleted `-fir.yaml` and its
   venus-05 twin for the reasoning: point at the doc of record or the `-fir-xg` config.
 
 Checks: every kept config loads with OmegaConf and its `target:` strings import, except upstream's
-`hunyuan-paint-pbr.yaml` (D9; its target does not resolve on `main` either); the full gates (the
-configs are gate inputs); the tests.
+`hunyuan-paint-pbr.yaml` (D9; its target does not resolve on `main` either); the subset gates (the
+gate reads each run's jupiter `config.yaml`, not the tree's); the tests.
 
 **Instructions:**
 
-**Result:**
+**Result:** 10 configs and `pilot10_venus.json` deleted; the release header points at `-fir-xg` (its `model:` and
+`lightning:` equal, checked). Kept configs load and import; subset gates IDENTICAL (job 296031); tests 18/18. PASS.
 
 ### 7. Coverage run (no code change)
 

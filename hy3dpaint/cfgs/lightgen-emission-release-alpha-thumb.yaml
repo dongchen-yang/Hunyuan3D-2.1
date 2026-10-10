@@ -1,9 +1,10 @@
 # lightgen: pbr->emission multiview fine-tune WITH alpha, REFERENCE IMAGE = the TexVerse
 # thumbnail, on the RELEASED dataset (Hugging Face 3dlg-hcvc/LightgenBench: train 36,426 /
-# val 200 / test 200). The paper recipe on the new data: `model:` and `lightning:` below are
-# byte-identical to cfgs/lightgen-emission-74k-alpha-thumb-agentic-fir.yaml (24-channel
-# conv_in, LR 7e-5, bs4 x 4 GPUs = global 16, 50,000 steps, checkpoint/validation every 1,250,
-# trough checkpoints every 10,000); read that file and its venus-05 twin for the reasoning.
+# val 200 / test 200). The paper recipe on the new data: `model:` and `lightning:` below equal,
+# apart from the snapshot path, those of cfgs/lightgen-emission-74k-alpha-thumb-agentic-fir-xg.yaml,
+# the paper run's config (24-channel conv_in, LR 7e-5, bs4 x 4 GPUs = global 16, 50,000 steps,
+# checkpoint/validation every 1,250, trough checkpoints every 10,000); the reasoning is in that file
+# and in its -fir and venus-05 twins (tag pre-refactor).
 # 50,000 x 16 = 800k shape-visits = ~22 epochs of 36,426.
 #
 # THIS FILE IS A TEMPLATE. It runs on any Alliance cluster, so it carries two tokens instead
