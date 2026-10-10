@@ -123,8 +123,8 @@ conda run -n hunyuanpaint bash -c \
 # Step 4b (LightGen Task 8): wandb client. train.py's logger block targets
 # pytorch_lightning.loggers.WandbLogger (project "LightGen") -- not in requirements.txt
 # because upstream never used it (TensorBoard). Needed before any real train.py run;
-# not exercised by smoke_load_pretrained.py or smoke_train_step.py (neither touches the
-# Trainer/logger), so its absence would not surface until Task 9's actual training job.
+# not exercised by smoke_load_pretrained.py (it does not touch the Trainer/logger), so its
+# absence would not surface until Task 9's actual training job.
 conda run -n hunyuanpaint bash -c \
     'pip install wandb==0.28.1' \
     2>&1 | tee "log/${TS}-hunyuanpaint-wandb.log"

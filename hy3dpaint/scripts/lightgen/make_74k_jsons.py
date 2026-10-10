@@ -1,10 +1,9 @@
 """Build the venus-side train / val64 example JSONs for the 74k pbr->emission run -- and prove,
 before a 57-hour job is submitted, that the training set contains nothing we will evaluate on.
 
-Why this exists instead of `make_examples_json.py --fixture_root <staged root>`: that script
-enumerates the directory. The staged root holds *all* of train + val + test, so a
-directory-enumeration train JSON would train on 100% of the evaluation set and every number the
-run produced afterwards would be worthless. This script is sha-driven -- the committed v2 split
+Why this does not list the staged directory: the staged root holds *all* of train + val + test,
+so a directory-enumeration train JSON would train on 100% of the evaluation set and every number
+the run produced afterwards would be worthless. This script is sha-driven -- the committed v2 split
 lists are the only source of membership -- and it refuses to write anything unless the split
 algebra checks out.
 

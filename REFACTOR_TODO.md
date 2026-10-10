@@ -16,7 +16,7 @@ same for `plans/2026-09-16-hunyuan3d-paint-refactor.md`); use them as a source o
 
 - [x] 1. Housekeeping
 - [x] 2. Check setup: inference gate, tests, training check, noise envelopes (no code change)
-- [ ] 3. Dead one-off scripts
+- [x] 3. Dead one-off scripts
 - [x] 4. Dropped: upstream's demo, app and API layer stays (D12)
 - [ ] 5. Launchers (per D14)
 - [ ] 5b. Move the kept cluster scripts into `hy3dpaint/scripts/internal/`
@@ -369,10 +369,10 @@ richer checkpoint summary, envelopes need 4 runs, Solar device mapping and colle
 
 Not used by the paper or the release run; nothing calls them.
 
-- [ ] `hy3dpaint/scripts/lightgen/smoke_train_step.py`: broken since `f4dd311` (it calls
+- [x] `hy3dpaint/scripts/lightgen/smoke_train_step.py`: broken since `f4dd311` (it calls
   `_assert_condition_channel_layout` on the class, assumes 20 channels and `/localscratch` paths).
   Fix the comment that names it: `env_setup.sh:126`.
-- [ ] `hy3dpaint/scripts/lightgen/make_examples_json.py`: superseded by `make_74k_jsons.py`. Fix the
+- [x] `hy3dpaint/scripts/lightgen/make_examples_json.py`: superseded by `make_74k_jsons.py`. Fix the
   comments that name it: `make_74k_jsons.py:4`, `make_val_subset.py:17`. The comment in
   `cfgs/lightgen-emission-74k.yaml:14` goes with that config in step 6. The parent predictor's
   `--examples_json` help names it: step 15's list.
@@ -381,7 +381,8 @@ Checks: the subset gates, the tests.
 
 **Instructions:**
 
-**Result:**
+**Result:** Both deleted, the three comments that named them reworded. Subset gates IDENTICAL
+(Blackwell, job 296022); tests 18/18. PASS.
 
 ### 4. Dropped: upstream's demo, app and API layer stays (D12)
 
