@@ -1,8 +1,8 @@
-"""pytest for LightgenEmissionDataset.
+"""pytest for the loader, TextureDataset (src/data/dataloader/objaverse_loader_forTexturePBR.py).
 
 Can be run as:
-  python test_lightgen_emission_loader.py  (standalone)
-  pytest test_lightgen_emission_loader.py   (if pytest installed)
+  python test_texture_dataset.py  (standalone)
+  pytest test_texture_dataset.py   (if pytest installed)
 """
 
 import json
@@ -18,8 +18,8 @@ from PIL import Image
 # Add parent directory to path for imports
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
 
-from src.data.dataloader import lightgen_emission_loader
-from src.data.dataloader.lightgen_emission_loader import LightgenEmissionDataset
+from src.data.dataloader import objaverse_loader_forTexturePBR as loader
+from src.data.dataloader.objaverse_loader_forTexturePBR import TextureDataset
 
 
 FIXTURE_ROOT = os.environ.get(
@@ -31,8 +31,8 @@ _DEFAULT_JSON = os.path.join(os.path.dirname(__file__), "pilot10_local.json")
 EXAMPLES_JSON = os.environ.get("LIGHTGEN_EXAMPLES_JSON", _DEFAULT_JSON)
 
 
-def test_lightgen_emission_dataset_shapes():
-    """Test that LightgenEmissionDataset produces correct shapes and dtypes."""
+def test_texture_dataset_shapes():
+    """Test that TextureDataset produces correct shapes and dtypes."""
     if not os.path.exists(EXAMPLES_JSON):
         pytest.skip(f"fixture root absent: {EXAMPLES_JSON}")
     # The JSON is committed, but the dirs it names live on jupiter -- which fir and every
@@ -44,7 +44,7 @@ def test_lightgen_emission_dataset_shapes():
     if not _dirs or not os.path.isdir(_dirs[0]):
         pytest.skip(f"fixture dirs unreachable here (no jupiter mount?): {_dirs[:1]}")
 
-    d = LightgenEmissionDataset(EXAMPLES_JSON, num_view=6, image_size=512)
+    d = TextureDataset(EXAMPLES_JSON, num_view=6, image_size=512)
 
     # Check dataset size
     assert len(d) == 10, f"Expected 10 examples, got {len(d)}"
@@ -120,18 +120,18 @@ def test_corrupt_example_is_substituted():
         victim = os.path.join(dirs[0], "render_tex", "003_emission.png")
         with open(victim, "r+b") as f:
             f.truncate(40)
-        lightgen_emission_loader._REPORTED_BAD.clear()
+        loader._REPORTED_BAD.clear()
 
-        d = LightgenEmissionDataset(_write_json(os.path.join(tmp, "ex.json"), dirs),
+        d = TextureDataset(_write_json(os.path.join(tmp, "ex.json"), dirs),
                                     num_view=6, image_size=64)
         b = d[0]
         assert b["name"] != dirs[0], "expected a substitute example, got the corrupt one"
         assert b["images_emission"].shape == (6, 3, 64, 64)
-        assert dirs[0] in lightgen_emission_loader._REPORTED_BAD, "the bad shape was not reported"
+        assert dirs[0] in loader._REPORTED_BAD, "the bad shape was not reported"
         # Reported once: a second visit must not re-add (set membership is the once-ness contract).
-        n_reported = len(lightgen_emission_loader._REPORTED_BAD)
+        n_reported = len(loader._REPORTED_BAD)
         d[0]
-        assert len(lightgen_emission_loader._REPORTED_BAD) == n_reported
+        assert len(loader._REPORTED_BAD) == n_reported
 
 
 def test_systemic_corruption_raises():
@@ -141,8 +141,8 @@ def test_systemic_corruption_raises():
         for d_ in dirs:
             with open(os.path.join(d_, "render_tex", "000_albedo.png"), "r+b") as f:
                 f.truncate(40)
-        lightgen_emission_loader._REPORTED_BAD.clear()
-        ds = LightgenEmissionDataset(_write_json(os.path.join(tmp, "ex.json"), dirs),
+        loader._REPORTED_BAD.clear()
+        ds = TextureDataset(_write_json(os.path.join(tmp, "ex.json"), dirs),
                                      num_view=6, image_size=64)
         with pytest.raises(RuntimeError, match="distinct examples failed to load"):
             ds[0]
@@ -170,8 +170,8 @@ def test_thumbnail_ref_loads_thumbnail_not_render_cond():
     with tempfile.TemporaryDirectory() as tmp:
         dirs = _make_synthetic_fixture(tmp, 3)
         thumbs = _make_synthetic_thumbs(os.path.join(tmp, "thumbs"), dirs)
-        lightgen_emission_loader._REPORTED_BAD.clear()
-        ds = LightgenEmissionDataset(_write_json(os.path.join(tmp, "ex.json"), dirs), num_view=6,
+        loader._REPORTED_BAD.clear()
+        ds = TextureDataset(_write_json(os.path.join(tmp, "ex.json"), dirs), num_view=6,
                                      image_size=64, ref_source="thumbnail", thumbnail_dir=thumbs)
         b = ds[1]
         assert b["images_cond"].shape == (2, 3, 64, 64)
@@ -186,7 +186,7 @@ def test_thumbnail_ref_loads_thumbnail_not_render_cond():
 def test_default_mode_is_frontal_albedo_unchanged():
     with tempfile.TemporaryDirectory() as tmp:
         dirs = _make_synthetic_fixture(tmp, 2)
-        ds = LightgenEmissionDataset(_write_json(os.path.join(tmp, "ex.json"), dirs),
+        ds = TextureDataset(_write_json(os.path.join(tmp, "ex.json"), dirs),
                                      num_view=6, image_size=64)
         assert ds.ref_source == "frontal_albedo" and ds.augment_ref is False
         b = ds[0]
@@ -200,9 +200,9 @@ def test_augment_ref_uses_upstream_augment_image(monkeypatch):
         dirs = _make_synthetic_fixture(tmp, 2)
         thumbs = _make_synthetic_thumbs(os.path.join(tmp, "thumbs"), dirs)
         js = _write_json(os.path.join(tmp, "ex.json"), dirs)
-        plain = LightgenEmissionDataset(js, num_view=6, image_size=64, ref_source="thumbnail",
+        plain = TextureDataset(js, num_view=6, image_size=64, ref_source="thumbnail",
                                         thumbnail_dir=thumbs)
-        aug = LightgenEmissionDataset(js, num_view=6, image_size=64, ref_source="thumbnail",
+        aug = TextureDataset(js, num_view=6, image_size=64, ref_source="thumbnail",
                                       thumbnail_dir=thumbs, augment_ref=True)
         assert aug.augment_ref is True
         # Coin flips, in call order: bg draw (<0.6 gray) | identity (<0.5 return as-is) |
@@ -225,12 +225,12 @@ def test_missing_thumbnail_is_a_bad_example_not_a_fallback():
     with tempfile.TemporaryDirectory() as tmp:
         dirs = _make_synthetic_fixture(tmp, 6)
         thumbs = _make_synthetic_thumbs(os.path.join(tmp, "thumbs"), dirs[1:])  # shape000 has none
-        lightgen_emission_loader._REPORTED_BAD.clear()
-        ds = LightgenEmissionDataset(_write_json(os.path.join(tmp, "ex.json"), dirs), num_view=6,
+        loader._REPORTED_BAD.clear()
+        ds = TextureDataset(_write_json(os.path.join(tmp, "ex.json"), dirs), num_view=6,
                                      image_size=64, ref_source="thumbnail", thumbnail_dir=thumbs)
         b = ds[0]
         assert b["name"] != dirs[0], "expected a substitute example"
-        assert dirs[0] in lightgen_emission_loader._REPORTED_BAD
+        assert dirs[0] in loader._REPORTED_BAD
         sub = _upstream_squash(os.path.join(thumbs, os.path.basename(b["name"]) + ".png"), 64)
         assert torch.equal(b["images_cond"][0], sub), "substitute must carry ITS thumbnail"
 
@@ -240,8 +240,8 @@ def test_empty_thumbnail_dir_raises_after_three():
         dirs = _make_synthetic_fixture(tmp, 5)
         empty = os.path.join(tmp, "thumbs")
         os.makedirs(empty)
-        lightgen_emission_loader._REPORTED_BAD.clear()
-        ds = LightgenEmissionDataset(_write_json(os.path.join(tmp, "ex.json"), dirs), num_view=6,
+        loader._REPORTED_BAD.clear()
+        ds = TextureDataset(_write_json(os.path.join(tmp, "ex.json"), dirs), num_view=6,
                                      image_size=64, ref_source="thumbnail", thumbnail_dir=empty)
         with pytest.raises(RuntimeError, match="distinct examples failed to load"):
             ds[0]
@@ -252,23 +252,30 @@ def test_init_rejects_bad_reference_arguments():
         dirs = _make_synthetic_fixture(tmp, 1)
         js = _write_json(os.path.join(tmp, "ex.json"), dirs)
         with pytest.raises(ValueError, match="ref_source"):
-            LightgenEmissionDataset(js, ref_source="bogus")
+            TextureDataset(js, ref_source="bogus")
         with pytest.raises(ValueError, match="thumbnail_dir"):
-            LightgenEmissionDataset(js, ref_source="thumbnail")
+            TextureDataset(js, ref_source="thumbnail")
         with pytest.raises(FileNotFoundError):
-            LightgenEmissionDataset(js, ref_source="thumbnail", thumbnail_dir=os.path.join(tmp, "nope"))
+            TextureDataset(js, ref_source="thumbnail", thumbnail_dir=os.path.join(tmp, "nope"))
         with pytest.raises(ValueError, match="augment_ref"):
-            LightgenEmissionDataset(js, augment_ref=True)
+            TextureDataset(js, augment_ref=True)
         # thumbnail_dir without ref_source='thumbnail' must be rejected, never ignored:
         # ignoring it trains on render_cond/000.png while the caller believes otherwise.
         with pytest.raises(ValueError, match="thumbnail_dir is only used"):
-            LightgenEmissionDataset(js, thumbnail_dir=os.path.dirname(js))
+            TextureDataset(js, thumbnail_dir=os.path.dirname(js))
 
 
+
+
+def test_stored_class_path_resolves_to_texture_dataset():
+    """Stored configs and the parent's predictor name lightgen_emission_loader.LightgenEmissionDataset,
+    a re-export of TextureDataset until refactor step 15."""
+    from src.data.dataloader.lightgen_emission_loader import LightgenEmissionDataset as stored
+    assert stored is TextureDataset
 
 if __name__ == "__main__":
-    test_lightgen_emission_dataset_shapes()
+    test_texture_dataset_shapes()
     test_corrupt_example_is_substituted()
     test_systemic_corruption_raises()
     print("✓ decode-guard tests passed")
-    print("(thumbnail-reference tests need pytest: python -m pytest scripts/lightgen/test_lightgen_emission_loader.py)")
+    print("(thumbnail-reference tests need pytest: python -m pytest scripts/lightgen/test_texture_dataset.py)")

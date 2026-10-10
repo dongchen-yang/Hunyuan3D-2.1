@@ -33,6 +33,11 @@ same for `plans/2026-09-16-hunyuan3d-paint-refactor.md`); use them as a source o
 - [ ] 16. Cut-over (per D8)
 - [ ] 17. Release cut: our internal files leave the published tree (per D10)
 
+A Result names the commit its checks ran on. Two rebases moved some of those off the branch: on
+2026-10-12 (the Results of steps 12-14 and the review fixes squashed in) and on 2026-10-17 (the loader
+test renamed inside step 8a). Each checked commit differs from its step on the branch only in
+`REFACTOR_TODO.md`, the gate tooling or that test's name.
+
 The check setup is step 2, not step 7 as in TEXGen: TEXGen's step 1 moved an existing gate into its
 repo, while this fork has no gate yet, and every later step (deletions included) runs one.
 
@@ -390,7 +395,8 @@ Checks: the subset gates, the tests.
 
 Kept: `submit_release.sh`, `train_release_body.sh`, `stage_alliance.sh`, `relayout_release.py` and its
 test, `make_74k_jsons.py` and its test, `make_val_subset.py`, `val64_release_shas.txt`, `env_setup.sh`
-and `smoke_load_pretrained.py` (step 12), `test_lightgen_emission_loader.py` and `pilot10_local.json`
+and `smoke_load_pretrained.py` (step 12), `test_lightgen_emission_loader.py` (now
+`test_texture_dataset.py`, step 8a) and `pilot10_local.json`
 (the loader test's fixture list).
 
 - [x] Deleted (D14): `train_74k.sbatch`, `train_74k_alpha.sbatch`,
@@ -489,8 +495,12 @@ glob-picked random views and lighting-suffix reference pairs; `HunyuanPaint`'s t
 `training_step` with its dual-reference loss, its `validation_step` through `pipeline.__call__`) and
 what the fold changes observably (the class name in logs and in a new logdir's `configs/project.yaml`).
 
-- [ ] 8a. Loader: `LightgenEmissionDataset` → `TextureDataset`, with our constructor (Keep stable 7).
-  The loader tests move to the new path. Full gates, the training check, the tests.
+- [x] 8a. Loader: `LightgenEmissionDataset` → `TextureDataset`, with our constructor (Keep stable 7).
+  Its test is `scripts/lightgen/test_texture_dataset.py` without the old-name aliases (Dongchen
+  2026-10-17, at review: files named by role; it was `test_lightgen_emission_loader.py`).
+  The loader tests move to the new path. Full gates, the training check, the tests. Done `6ac033e`
+  (moved verbatim, checked by AST; upstream's `__main__` demo of the replaced class dropped): full
+  gates paper 204 and release 200 IDENTICAL (4090), fresh and resume IDENTICAL, tests 19/19.
 - [ ] 8b. Model: `HunyuanPaintEmission` → `HunyuanPaint`. Unchanged: Keep stable 4, 5 and 6 (attribute
   names, the panel, the RNG draw order); `_swap_in_fork_unet` (building the repo class directly is
   under Later); our condition-dropout fix (`model_emission.py:341-379`; upstream's

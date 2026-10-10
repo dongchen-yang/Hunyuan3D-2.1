@@ -60,7 +60,7 @@ data:
     num_workers: __NUM_WORKERS__
     train:
       -
-        target: src.data.dataloader.lightgen_emission_loader.LightgenEmissionDataset
+        target: src.data.dataloader.objaverse_loader_forTexturePBR.TextureDataset
         params:
           num_view: 6
           use_alpha: true
@@ -81,7 +81,7 @@ data:
           json_path: __STAGE__/release_train.json
     validation:
       -
-        target: src.data.dataloader.lightgen_emission_loader.LightgenEmissionDataset
+        target: src.data.dataloader.objaverse_loader_forTexturePBR.TextureDataset
         params:
           num_view: 6
           use_alpha: true
