@@ -24,23 +24,23 @@
  },
  "bwse": {
   "paper": {
-   "run": "/local-scratch/localhome/dya78/lightgen_eval_local/hunyuan_refactor_checks/out/bwse/bwse_pre-refactor_c/paper_subset20_run1",
-   "shas": "subset20.txt",
+   "run": "/local-scratch/localhome/dya78/lightgen_eval_local/hunyuan_refactor_checks/out/bwse/bwse_full_baselines/paper_full_run1",
+   "shas": "shas.txt",
    "envelope": [
-    "/local-scratch/localhome/dya78/lightgen_eval_local/hunyuan_refactor_checks/out/bwse/bwse_pre-refactor_c/paper_subset20_run1",
-    "/local-scratch/localhome/dya78/lightgen_eval_local/hunyuan_refactor_checks/out/bwse/bwse_pre-refactor_e/paper_subset20_run2",
-    "/local-scratch/localhome/dya78/lightgen_eval_local/hunyuan_refactor_checks/out/bwse/bwse_pre-refactor_e/paper_subset20_run3",
-    "/local-scratch/localhome/dya78/lightgen_eval_local/hunyuan_refactor_checks/out/bwse/bwse_pre-refactor_e/paper_subset20_run4"
+    "/local-scratch/localhome/dya78/lightgen_eval_local/hunyuan_refactor_checks/out/bwse/bwse_full_baselines/paper_full_run1",
+    "/local-scratch/localhome/dya78/lightgen_eval_local/hunyuan_refactor_checks/out/bwse/bwse_full_baselines/paper_full_run2",
+    "/local-scratch/localhome/dya78/lightgen_eval_local/hunyuan_refactor_checks/out/bwse/bwse_full_baselines/paper_full_run3",
+    "/local-scratch/localhome/dya78/lightgen_eval_local/hunyuan_refactor_checks/out/bwse/bwse_full_baselines/paper_full_run4"
    ]
   },
   "release": {
-   "run": "/local-scratch/localhome/dya78/lightgen_eval_local/hunyuan_refactor_checks/out/bwse/bwse_pre-refactor_b/release_subset20_run1",
-   "shas": "subset20.txt",
+   "run": "/local-scratch/localhome/dya78/lightgen_eval_local/hunyuan_refactor_checks/out/bwse/bwse_full_baselines/release_full_run1",
+   "shas": "shas.txt",
    "envelope": [
-    "/local-scratch/localhome/dya78/lightgen_eval_local/hunyuan_refactor_checks/out/bwse/bwse_pre-refactor_b/release_subset20_run1",
-    "/local-scratch/localhome/dya78/lightgen_eval_local/hunyuan_refactor_checks/out/bwse/bwse_pre-refactor_c/release_subset20_run2",
-    "/local-scratch/localhome/dya78/lightgen_eval_local/hunyuan_refactor_checks/out/bwse/bwse_pre-refactor_e/release_subset20_run3",
-    "/local-scratch/localhome/dya78/lightgen_eval_local/hunyuan_refactor_checks/out/bwse/bwse_pre-refactor_e/release_subset20_run4"
+    "/local-scratch/localhome/dya78/lightgen_eval_local/hunyuan_refactor_checks/out/bwse/bwse_full_baselines/release_full_run1",
+    "/local-scratch/localhome/dya78/lightgen_eval_local/hunyuan_refactor_checks/out/bwse/bwse_full_baselines/release_full_run2",
+    "/local-scratch/localhome/dya78/lightgen_eval_local/hunyuan_refactor_checks/out/bwse/bwse_full_baselines/release_full_run3",
+    "/local-scratch/localhome/dya78/lightgen_eval_local/hunyuan_refactor_checks/out/bwse/bwse_full_baselines/release_full_run4"
    ]
   },
   "fresh": {
