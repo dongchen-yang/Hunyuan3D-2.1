@@ -24,7 +24,7 @@ same for `plans/2026-09-16-hunyuan3d-paint-refactor.md`); use them as a source o
 - [x] 7. Coverage run (no code change)
 - [x] 8. Fold our model and loader into upstream's originals (per D13)
 - [x] 9. Cleanups inside the folded code
-- [ ] 10. Our other edits inside upstream's files
+- [x] 10. Our other edits inside upstream's files
 - [ ] 11. The JSON builders and the release data scripts
 - [ ] 12. Environment files
 - [ ] 13. Release layer: generic entry points for LightgenBench users (per D15)
@@ -552,18 +552,18 @@ test's unused `FIXTURE_ROOT`). Kept, with reasons in the commit: the three layou
 Each stays a minimal edit in place; `git diff main -- <file>` is its record. One commit per file,
 only where something changes.
 
-- [ ] `hy3dpaint/train.py` (93 lines added, 5 removed): `:25` imports; `:179-187` the `LIGHTGEN_RUN_TS` logdir suffix
+- [x] `hy3dpaint/train.py` (93 lines added, 5 removed): `:25` imports; `:179-187` the `LIGHTGEN_RUN_TS` logdir suffix
   (Keep stable 8); `:316-330` the wandb logger in place of TensorBoard (project `LightGen`); `:378-413`
   the trough checkpointer; `:426-437` `LIGHTGEN_DDP_FIND_UNUSED`; `:438-462` the single-node SLURM
-  pin; `:256-272` the conv_in expansion (the predictor copies it). Look for stale comments and for
+  pin. (`:256-272`, the conv_in expansion the predictor copies, is upstream's code, not ours.) Look for stale comments and for
   switches no launcher sets any more (they stay, D6, but the doc says so). `--resume_weights_only`
   (`:308-309`) skips the conv_in expansion and cannot load our checkpoints: under Later.
-- [ ] `hunyuanpaintpbr/unet/model.py:20,580-598` (the empty-validation resume guard).
-- [ ] `hunyuanpaintpbr/unet/modules.py:965-1008` (the PBR stack appended to the conv_in input, and its
+- [x] `hunyuanpaintpbr/unet/model.py:20,580-598` (the empty-validation resume guard).
+- [x] `hunyuanpaintpbr/unet/modules.py:965-1008` (the PBR stack appended to the conv_in input, and its
   guard).
-- [ ] `hunyuanpaintpbr/unet/attn_processor.py:689-691,753-756` (the device fix; the comment names a
+- [x] `hunyuanpaintpbr/unet/attn_processor.py:689-691,753-756` (the device fix; the comment names a
   `process_pbr_hidden_states` that does not exist, the call site is `__call__` at `:717`).
-- [ ] `src/data/objaverse_hunyuan.py:74-84` (validation `DistributedSampler(shuffle=False)` and the
+- [x] `src/data/objaverse_hunyuan.py:74-84` (validation `DistributedSampler(shuffle=False)` and the
   configured batch size instead of 4): these change upstream's behavior for upstream's own config;
   they stay, and the doc says so.
 
@@ -571,7 +571,9 @@ Checks after each commit: the full gates; the training check, fresh and resume; 
 
 **Instructions:**
 
-**Result:**
+**Result:** Every hunk still used and minimal; `LIGHTGEN_DDP_FIND_UNUSED` is set by nothing (kept, D6). One stale
+comment fixed (`attn_processor.py:689`: the caller is `SelfAttnProcessor2_0.__call__`, `:757`). Subset gates
+IDENTICAL (job 296132). PASS.
 
 ### 11. The JSON builders and the release data scripts
 

@@ -686,7 +686,7 @@ class SelfAttnProcessor2_0(BaseAttnProcessor):
         token_suffix = "" if token == "albedo" else "_" + token
 
         # Device management (if needed)
-        # lightgen: this branch is DEAD -- the only call site (process_pbr_hidden_states below)
+        # lightgen: this branch is DEAD -- the only call site (SelfAttnProcessor2_0.__call__ below)
         # passes multiple_devices=False, so the cuda:0/cuda:1 hardcode never executes and is
         # therefore harmless under DDP. Left as upstream wrote it rather than "fixed" blind.
         if multiple_devices:
