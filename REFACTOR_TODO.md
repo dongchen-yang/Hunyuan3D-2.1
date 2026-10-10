@@ -15,7 +15,7 @@ same for `plans/2026-09-16-hunyuan3d-paint-refactor.md`); use them as a source o
 ## Progress
 
 - [x] 1. Housekeeping
-- [ ] 2. Check setup: inference gate, tests, training check, noise envelopes (no code change)
+- [x] 2. Check setup: inference gate, tests, training check, noise envelopes (no code change)
 - [ ] 3. Dead one-off scripts
 - [x] 4. Dropped: upstream's demo, app and API layer stays (D12)
 - [ ] 5. Launchers (per D14)
@@ -60,7 +60,8 @@ repo, while this fork has no gate yet, and every later step (deletions included)
   must lie within the envelope, the largest difference between any two of at least 4 runs of
   `pre-refactor` on the same GPU type. Training check: every recorded value within its envelope, the
   structure (step order, batch names, keys) exact. A result outside is rerun once on another GPU of
-  the type, never the one it ran on, before it counts as failed. Every run is reported.
+  the type, never the one it ran on, before it counts as failed (by hand: `run_checks.py` does not
+  rerun; `--checks <check>` with a new label). Every run is reported.
 - Run checks in parallel across our machines (the compute-access skill): the gates on the
   workstation 4090 and on any lab 4090 that step 2 qualifies; the training checks on a Solar node
   with at least 48 GB (a 4090 cannot train this model at any batch size); prepare the next step while
@@ -119,39 +120,38 @@ pickles no class of ours (checked on a local `last.ckpt`: only `collections` and
 `hyper_parameters`); what code depends on is the state-dict keys and the `target:` strings of the
 configs (Keep stable 2, 4).
 
-The inference gate runs the parent's predictor, frozen into a copy at step 2, against the tree under
-test (a `git archive` of the commit, so ongoing edits cannot change the code under a running gate):
+The checks (built in step 2, `hy3dpaint/scripts/internal/gate/`; data and outputs in
+`C=/local-scratch/localhome/dya78/lightgen_eval_local/hunyuan_refactor_checks`, outside the repo):
 
 ```bash
-C=/local-scratch/localhome/dya78/lightgen_eval_local/hunyuan_refactor_checks
-G=hy3dpaint/scripts/internal/gate                                    # built in step 2
-bash $G/gate.sh <tree> <out> paper|release [$G/<run>_subset20.txt]   # prints GATE_DONE
-python $G/compare_views.py --a <baseline> --b <out> [--shas_file <list>]
-bash $G/train-check.sh <tree> <out> fresh|resume                     # on a >= 48 GB GPU
-python $G/compare_traincheck.py --a <baseline record> --b <out>/record.jsonl
+G=hy3dpaint/scripts/internal/gate
+python3 $G/run_checks.py --rev <commit> --checks paper,release[,fresh,resume] [--full]   # one verdict: PASS, FAIL, INCOMPLETE
+bash $G/gate.sh <tree> <out> paper|release [subset20|<shas>]    # one gate by hand (GATE_* overrides: Solar)
+bash $G/train-check.sh <tree> <out> fresh|resume                # one training check (>= 48 GB)
 ```
 
-`gate.sh` calls `C/tooling/repo/evaluation/mvpaint_bridge/predict_emission_views.py --hy3dpaint_root
-<tree>/hy3dpaint --config <cfg> --ckpt <ckpt> --examples_json <list> --thumbnail_dir <thumbs>
---snapshot /localhome/dya78/.cache/huggingface/hub/models--tencent--Hunyuan3D-2.1/snapshots/0b94677654c57bb9a6b6845cd7b704ccf551d327/hunyuan3d-paintpbr-v2-1
---seeds 1 --seed_base 0 --val_steps 30 --out <out>`, the sampling of every published row (30
-Euler-ancestral steps, no guidance, bf16 autocast, the global seed reset per shape from
-`sample_seed(sha, seed)`).
-
-- Inputs: paper, the 204 shapes of `../evaluation/mvpaint_74k_monitor/mv74k_test_agentic_clean204.json`
-  (jupiter `uv_voxel_pipeline/out_multiview_74k/<sha>`, the fixture the paper run trained and was
-  tested on) with thumbnails from jupiter `trellis2_bw/eval_inputs/test388/thumbnails/`; release, the
-  200 shapes of `/local-scratch/localhome/dya78/lightgen_release_test200/test200_examples.json` with
-  its `thumbs/`. Step 2 copies both into `C/inputs/` so the gate reads local files only.
-- Routine steps: a fixed 20-shape subset per run (about 1.5 min of sampling at 4.2 s per shape, plus
-  the model load). Full: 204 and 200 shapes (about 14 min each), for steps that touch the model, the
-  loader, the configs or `train.py`, and before the merge.
-- Compare the six views `<sha>/seed00/00{0..5}_emission.png` of every shape, under the pass rule in
-  § How we work.
-- Measured before this plan: on one 4090 in normal mode (no deterministic algorithms) the same seed
-  repeats byte for byte (3 shapes, 2026-08-16, `../docs/evaluation.md:1006-1007`; 34 shapes on xg4090
-  and 12 views on the workstation from existing files, 2026-10-06). Deterministic mode was never
-  measured for this model.
+- The gate runs the parent's predictor, frozen into `C/tooling/repo/` (from parent `6ffabdc`), against
+  `git archive <commit> hy3dpaint`, seed 0, 30 Euler-ancestral steps, no guidance, bf16 autocast:
+  the sampling of every published row. It loads a weights-only copy of each checkpoint
+  (`slim_ckpt.py`: `state_dict` and `global_step`, the only keys the predictor reads; 9.43 GiB, about
+  20 GB of host RAM less per process) and the run's own jupiter `config.yaml`. Inputs are fixed
+  copies (`make_inputs.py`): the paper run's 204 test shapes and the release run's 200, each with
+  `subset20.txt` (every 10th shape) and a `MANIFEST.sha256`. It compares the six views
+  `<sha>/seed00/00{0..5}_emission.png` (`compare_views.py`) under the pass rule.
+- Where: the workstation 4090 (both lock files; `run_checks.py` uses it only when it is free right
+  now), else Solar's RTX PRO 6000 Blackwell Server Edition (cs-venus-19, `star2/checks.sbatch`,
+  subset20 baselines only). Training checks run on that Blackwell type only (a 4090 cannot train this
+  model). Baselines and envelopes per type: `baselines.json`.
+- Routine steps: subset20 (about 2 min on the 4090 plus the model load). Full (`--full`): 204 and 200
+  shapes, about 15 min each, for steps that touch the model, the loader, `train.py` or the configs,
+  and before step 15.
+- The training check uses the math attention kernel (`HUNYUAN_GATE_MATH_SDP=1`): with the fused
+  kernels, which deterministic mode does not flag, two runs drifted (loss up to 3e-4); with it, every
+  pair of runs is identical.
+- Measured on tag `pre-refactor` (2026-10-10): every repeat is byte-identical. 4090: paper 204 twice,
+  release 200 twice and against the 2026-09-22 views (made with the full checkpoint, 5 seeds in one
+  process). Blackwell: each subset20 gate 4 times, fresh and resume 4 times each. Across types the
+  views differ (Blackwell vs 4090: every view, mean 0.1/255, single pixels up to 104/255).
 
 ## Keep stable (other code depends on these)
 
@@ -337,81 +337,33 @@ branch (`b14e382`, `483155f`). Tests 18/18 passed, no skip. PASS.
 
 ### 2. Check setup: inference gate, tests, training check, noise envelopes (no code change)
 
-All runs on tag `pre-refactor`. Tooling goes in `hy3dpaint/scripts/internal/gate/` (committed in this
-step); data and run outputs in `C` (above), outside the repo.
+All runs on tag `pre-refactor`. Tooling in `hy3dpaint/scripts/internal/gate/`; data and run outputs in
+`C` (§ Runs and the gate), outside the repo.
 
-- [ ] Pull both checkpoints with their `config.yaml` (`df -h /local-scratch` first; rsync; sha256 on
-  both ends against the values in § Runs) into the parent-ignored `../evaluation/mvpaint_bridge/ckpts/<run>/`,
-  with jupiter's layout below it (`config.yaml`, `ckpts/troughs/<file>`).
-- [ ] Freeze the predictor: copy `../evaluation/mvpaint_bridge/predict_emission_views.py` and
-  `../evaluation/newdata_eval/seedutil.py` into `C/tooling/repo/` in the repo-shaped layout, as
-  `stage_hunyuan_host.sh:104-110` does, and record the parent commit they came from. Every gate runs
-  this copy, so edits to the parent by other sessions cannot change the gate.
-- [ ] Local inputs in `C/inputs/`: the 204 paper shape dirs (36 view PNGs and `transforms.json` in
-  `render_tex/`, `render_cond/000.png`) and their thumbnails,
-  copied from jupiter, with an examples JSON of the local paths; the 200 release dirs, `thumbs/` and
-  the filled release config, copied from `/local-scratch/localhome/dya78/lightgen_release_{test200,val200}/`.
-- [ ] `gate.sh <tree> <out> paper|release [<shas_file>]`: both 4090 locks taken without waiting, the
-  `hunyuanpaint` env activated by path (never `conda run`), `PYTHONNOUSERSITE=1`, a fresh
-  `HF_MODULES_CACHE` under `<out>`, the predictor call above (a subset filters the examples JSON),
-  `nvidia-smi --query-compute-apps` in the log, a tee to `log/<TS>-hunyuan-gate-<name>.log`,
-  `GATE_DONE` at the end. Fix the two subsets: `paper_subset20.txt`, `release_subset20.txt`.
-- [ ] `compare_views.py`: per shape and view, byte identity, the mean and max absolute pixel
-  difference and the share of differing values; the pass rule (the 1/255-on-0.5% tolerance, then the
-  envelope); verdict IDENTICAL, WITHIN_NOISE or DIFFERENT; counts `same`, `different`, `missing`;
-  refuses empty input. Start from TEXGen-Emission's `scripts/internal/gate/compare_numeric.py` (its
-  tolerance, envelope cache and verdicts; its file list and layout are TEXGen's). A view-level difference is sized, when it
-  happens, by bridging and scoring the affected shapes (`../evaluation/mvpaint_bridge/bridge_batch.py
-  --blacken_bg`, then `evaluation/pointsampled/`); that is a record, not a pass.
-- [ ] Envelopes on the 4090: at least 4 normal-mode runs of each gate (full 204 and 200), and the
-  release gate also against the 2026-09-22 views
-  `/local-scratch/localhome/dya78/lightgen_release_test200/views_step00040000/<sha>/seed00/`. Normal
-  mode is how every published view was made; if its runs disagree beyond the tolerance, measure
-  deterministic mode (TEXGen's `detmode/sitecustomize.py`, its env var renamed;
-  `CUBLAS_WORKSPACE_CONFIG=:4096:8`) and gate in the mode with the smaller envelope.
-- [ ] Lab 4090s: xg4090 has the `hunyuanpaint` env (`../evaluation/newdata_eval/sweeps/hosts.json`),
-  sp4090 has none (stage it or skip it). A lab 4090 is admitted when one run of each gate there is
-  IDENTICAL to the workstation's on every shape (TEXGen's `fanout.py --qualify`); then the full gates
-  split their shape lists across the admitted 4090s.
-- [ ] A fan-out driver after TEXGen-Emission's `fanout.py`: probe the candidate GPUs once, dispatch
-  only to the free ones, split the full gates, run the training checks beside them, compare, print
-  one verdict (PASS, FAIL, INCOMPLETE, NOTHING_FREE).
-- [ ] Training check root `C/train_root`: 16 train and 2 val shapes from the local release val copy
-  (`/local-scratch/localhome/dya78/lightgen_release_val200/release/<uuid>/` and `thumbs/`), fixed in
-  `train_root_splits.json`; the example JSONs from `make_74k_jsons.py`; a check config made from the
-  release template (tokens filled, batch 1, accumulate 1, about 32 steps, validation on the 2 val
-  shapes, one regular and one trough checkpoint save, `trainer.benchmark: false`, few workers).
-- [ ] `train-check.sh <tree> <out> fresh|resume`: the real `train.py` from `<tree>/hy3dpaint`, a fresh
-  logdir (it auto-resumes from an existing `last.ckpt`), node-local `HF_MODULES_CACHE`, and a
-  `traincheck/sitecustomize.py` that adds deterministic mode, the reseed before `trainer.fit` and a
-  recording callback: per step the batch names, lr, loss, gradient norm and weight sum; per
-  validation `val/emission_mse`; for each saved file its keys, `pytorch-lightning_version`, scheduler
-  state and state sums. Written for pytorch-lightning 1.9.5 hooks (TEXGen's is for 2.5). fresh: from
-  the pretrained snapshot. resume: `--resume` from the release 40k trough, the only resume that shows
-  the code under test still loads a published checkpoint's weights, optimizer, loops and callbacks.
-  Stops on a non-finite loss. `compare_traincheck.py` and `traincheck/summarize_ckpt.py` from
-  TEXGen's gate (mostly generic).
-- [ ] Where training runs: a GPU with at least 48 GB (static footprint about 22.7 GiB, peak 33.0 GiB at
-  batch 1, 512², six views, bf16 with gradient checkpointing, measured on a 96 GB card,
-  `../docs/baselines/hunyuan3d-paint.md:280-281,288`). Solar L40S with the `hunyuanpaint` conda-pack (jupiter
-  `trellis2_bw/eval_inputs/solar_hunyuan_stage/hunyuanpaint_env.tar.gz`, unpacked into our own
-  directory, not the star2 worker's); never measured on 48 GB, so if batch 1 or the resume does not
-  fit, an RTX PRO 6000 node. `star2/checks.sbatch` after TEXGen's. At least 4 runs of each mode on
-  `pre-refactor` for the training envelope.
-- [ ] Tests, with counts recorded: the fork's 18 (`scripts/lightgen/test_lightgen_emission_loader.py`
-  9, `test_make_74k_jsons.py` 5, `test_relayout_release.py` 4; about 9 s; from `hy3dpaint/`,
-  `PYTHONNOUSERSITE=1 python -m pytest -q scripts/lightgen/test_*.py`); the parent's
-  `evaluation/mvpaint_bridge/test_predict_ref_source.py` (7, in `hunyuanpaint`); and the camera
-  parity against the tree under test, `hunyuan_cameras.regenerate("<tree>/hy3dpaint/train_examples/001/render_tex/transforms.json")`
-  called from the parent root (the parent's own test,
-  `data_processing/data_preparation/tests/test_multiview_cameras.py:167`, calls `regenerate()` with no
-  path, and `_resolve_transforms_json_path` prefers the main checkout's file over
-  `HUNYUAN_TRANSFORMS_JSON`, `hunyuan_cameras.py:139-142`). A skip fails the check; the loader's
-  `…_shapes` test needs the jupiter mount.
+- [x] Both checkpoints pulled (sha256 against § Runs) into the parent-ignored
+  `../evaluation/mvpaint_bridge/ckpts/<run>/` (`C/ckpts` links there), with weights-only copies.
+- [x] The predictor frozen into `C/tooling/repo/` (parent `6ffabdc`).
+- [x] Fixed inputs (`make_inputs.py`): paper 204, release 200, the training-check root (16 train and 2
+  val release shapes), each with a `MANIFEST.sha256`.
+- [x] `gate.sh`, `compare_views.py` (TEXGen's tolerance and envelope), `train-check.sh` with
+  `traincheck/` (Lightning 1.9.5 hooks, `summarize_ckpt.py`), `compare_traincheck.py`,
+  `star2/checks.sbatch`, `run_checks.py` (the one command), `baselines.json`.
+- [x] Envelopes: 4090 paper 2 runs, release 3 (with the 2026-09-22 views); Blackwell subset20 gates 4
+  runs each, fresh and resume 4 each. Every repeat byte-identical.
+- [x] Lab 4090s: xg4090 was down and sp4090 has no `hunyuanpaint` env; neither is used.
+- [x] Deterministic mode for the gates: not needed (normal mode repeats byte for byte, as every
+  published view was made). The training check needs it plus the math attention kernel.
+- [x] Tests: the fork's 18 (no skip); the parent's `evaluation/mvpaint_bridge/test_predict_ref_source.py`
+  (7, `hunyuanpaint`); camera parity against the tree under test,
+  `hunyuan_cameras.regenerate("<tree>/hy3dpaint/train_examples/001/render_tex/transforms.json")` from
+  the parent root (the parent's own test calls `regenerate()` without a path, which prefers the main
+  checkout's file over `HUNYUAN_TRANSFORMS_JSON`, `hunyuan_cameras.py:139-142`).
 
 **Instructions:**
 
-**Result:**
+**Result:** The check tooling (above), reviewed by Codex (8 of 10 findings fixed: stale-label reuse,
+richer checkpoint summary, envelopes need 4 runs, Solar device mapping and collection). Self-test on
+`pre-refactor` PASS (all IDENTICAL); tests 18 + 7 + camera parity. Training repeats only with math attention.
 
 ### 3. Dead one-off scripts
 

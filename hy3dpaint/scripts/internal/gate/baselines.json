@@ -1,0 +1,62 @@
+{
+ "_doc": "Per GPU type and check: the baseline run and the envelope runs, all of tag pre-refactor (REFACTOR_TODO.md step 2). Gates (compare_views.py): a shape passes when each of its six views differs from the baseline by at most 1/255 per pixel on at most 0.5% of the values; any other shape must lie within the envelope (the largest difference between any two envelope runs). Training checks (compare_traincheck.py): the structure exact, every recorded value within its envelope. 'shas' names the inputs list the gate runs cover (shas.txt: every shape; subset20.txt). rtx4090 = the workstation 4090; bwse = RTX PRO 6000 Blackwell Server Edition (Solar cs-venus-19). The 2026-09-22 release views (lightgen_release_test200/views_step00040000, made with the full checkpoint, 5 seeds in one process) are byte-identical to run1 on all 200 shapes and serve as a 4090 envelope run. Training checks run with the math attention kernel (train-check.sh): with it every envelope pair is identical.",
+ "rtx4090": {
+  "paper": {
+   "run": "/local-scratch/localhome/dya78/lightgen_eval_local/hunyuan_refactor_checks/out/rtx4090/pre-refactor_paper_full_run1",
+   "shas": "shas.txt",
+   "envelope": [
+    "/local-scratch/localhome/dya78/lightgen_eval_local/hunyuan_refactor_checks/out/rtx4090/pre-refactor_paper_full_run1",
+    "/local-scratch/localhome/dya78/lightgen_eval_local/hunyuan_refactor_checks/out/rtx4090/pre-refactor_paper_full_run2"
+   ]
+  },
+  "release": {
+   "run": "/local-scratch/localhome/dya78/lightgen_eval_local/hunyuan_refactor_checks/out/rtx4090/pre-refactor_release_full_run1",
+   "shas": "shas.txt",
+   "envelope": [
+    "/local-scratch/localhome/dya78/lightgen_eval_local/hunyuan_refactor_checks/out/rtx4090/pre-refactor_release_full_run1",
+    "/local-scratch/localhome/dya78/lightgen_eval_local/hunyuan_refactor_checks/out/rtx4090/pre-refactor_release_full_run2",
+    "/local-scratch/localhome/dya78/lightgen_release_test200/views_step00040000"
+   ]
+  }
+ },
+ "bwse": {
+  "paper": {
+   "run": "/local-scratch/localhome/dya78/lightgen_eval_local/hunyuan_refactor_checks/out/bwse/bwse_pre-refactor_c/paper_subset20_run1",
+   "shas": "subset20.txt",
+   "envelope": [
+    "/local-scratch/localhome/dya78/lightgen_eval_local/hunyuan_refactor_checks/out/bwse/bwse_pre-refactor_c/paper_subset20_run1",
+    "/local-scratch/localhome/dya78/lightgen_eval_local/hunyuan_refactor_checks/out/bwse/bwse_pre-refactor_e/paper_subset20_run2",
+    "/local-scratch/localhome/dya78/lightgen_eval_local/hunyuan_refactor_checks/out/bwse/bwse_pre-refactor_e/paper_subset20_run3",
+    "/local-scratch/localhome/dya78/lightgen_eval_local/hunyuan_refactor_checks/out/bwse/bwse_pre-refactor_e/paper_subset20_run4"
+   ]
+  },
+  "release": {
+   "run": "/local-scratch/localhome/dya78/lightgen_eval_local/hunyuan_refactor_checks/out/bwse/bwse_pre-refactor_b/release_subset20_run1",
+   "shas": "subset20.txt",
+   "envelope": [
+    "/local-scratch/localhome/dya78/lightgen_eval_local/hunyuan_refactor_checks/out/bwse/bwse_pre-refactor_b/release_subset20_run1",
+    "/local-scratch/localhome/dya78/lightgen_eval_local/hunyuan_refactor_checks/out/bwse/bwse_pre-refactor_c/release_subset20_run2",
+    "/local-scratch/localhome/dya78/lightgen_eval_local/hunyuan_refactor_checks/out/bwse/bwse_pre-refactor_e/release_subset20_run3",
+    "/local-scratch/localhome/dya78/lightgen_eval_local/hunyuan_refactor_checks/out/bwse/bwse_pre-refactor_e/release_subset20_run4"
+   ]
+  },
+  "fresh": {
+   "run": "/local-scratch/localhome/dya78/lightgen_eval_local/hunyuan_refactor_checks/out/bwse/bwse_pre-refactor_g/fresh_run1/record.jsonl",
+   "envelope": [
+    "/local-scratch/localhome/dya78/lightgen_eval_local/hunyuan_refactor_checks/out/bwse/bwse_pre-refactor_g/fresh_run1/record.jsonl",
+    "/local-scratch/localhome/dya78/lightgen_eval_local/hunyuan_refactor_checks/out/bwse/bwse_pre-refactor_g/fresh_run2/record.jsonl",
+    "/local-scratch/localhome/dya78/lightgen_eval_local/hunyuan_refactor_checks/out/bwse/bwse_pre-refactor_g/fresh_run3/record.jsonl",
+    "/local-scratch/localhome/dya78/lightgen_eval_local/hunyuan_refactor_checks/out/bwse/bwse_pre-refactor_g/fresh_run4/record.jsonl"
+   ]
+  },
+  "resume": {
+   "run": "/local-scratch/localhome/dya78/lightgen_eval_local/hunyuan_refactor_checks/out/bwse/bwse_pre-refactor_g/resume_run1/record.jsonl",
+   "envelope": [
+    "/local-scratch/localhome/dya78/lightgen_eval_local/hunyuan_refactor_checks/out/bwse/bwse_pre-refactor_g/resume_run1/record.jsonl",
+    "/local-scratch/localhome/dya78/lightgen_eval_local/hunyuan_refactor_checks/out/bwse/bwse_pre-refactor_g/resume_run2/record.jsonl",
+    "/local-scratch/localhome/dya78/lightgen_eval_local/hunyuan_refactor_checks/out/bwse/bwse_pre-refactor_g/resume_run3/record.jsonl",
+    "/local-scratch/localhome/dya78/lightgen_eval_local/hunyuan_refactor_checks/out/bwse/bwse_pre-refactor_g/resume_run4/record.jsonl"
+   ]
+  }
+ }
+}
