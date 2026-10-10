@@ -19,7 +19,7 @@ same for `plans/2026-09-16-hunyuan3d-paint-refactor.md`); use them as a source o
 - [x] 3. Dead one-off scripts
 - [x] 4. Dropped: upstream's demo, app and API layer stays (D12)
 - [x] 5. Launchers (per D14)
-- [ ] 5b. Move the kept cluster scripts into `hy3dpaint/scripts/internal/`
+- [x] 5b. Move the kept cluster scripts into `hy3dpaint/scripts/internal/`
 - [ ] 6. Configs (per D14)
 - [ ] 7. Coverage run (no code change)
 - [ ] 8. Fold our model and loader into upstream's originals (per D13)
@@ -418,7 +418,7 @@ IDENTICAL (job 296027); tests 18/18; `--dry-run` job files equal on all six clus
 
 ### 5b. Move the kept cluster scripts into `hy3dpaint/scripts/internal/`
 
-- [ ] `submit_release.sh`, `train_release_body.sh`, `stage_alliance.sh` (they hold the accounts, the
+- [x] `submit_release.sh`, `train_release_body.sh`, `stage_alliance.sh` (they hold the accounts, the
   `$HOME/scratch` defaults, the mail address; D10), next to `gate/`. Update the paths they use to
   call each other and the tools left in `scripts/lightgen/` (`make_74k_jsons.py`,
   `relayout_release.py`, `val64_release_shas.txt`, the tests `stage_alliance.sh:123` runs) in the same
@@ -428,7 +428,8 @@ Checks: `--dry-run` as in step 5, identical apart from the moved paths; the test
 
 **Instructions:**
 
-**Result:**
+**Result:** Moved; their paths to each other and the release config's comments follow. `--dry-run` job files
+equal to `pre-refactor` on all six clusters but comments; subset gates IDENTICAL (job 296029); tests 18/18. PASS.
 
 ### 6. Configs (per D14)
 

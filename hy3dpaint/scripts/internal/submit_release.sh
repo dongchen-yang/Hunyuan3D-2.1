@@ -2,11 +2,11 @@
 # Submit the released-dataset training (4 x H100, one node) on ANY Alliance cluster.
 # Run on the cluster's LOGIN node:
 #
-#   bash scripts/lightgen/submit_release.sh [--dry-run]
+#   bash scripts/internal/submit_release.sh [--dry-run]
 #
 # It pulls the clone (login nodes have the network; most compute nodes do not), writes one job
 # file per segment = a cluster-specific #SBATCH header + the run's constants + the shared body
-# scripts/lightgen/train_release_body.sh, and submits them as an `afterany` chain. Each
+# scripts/internal/train_release_body.sh, and submits them as an `afterany` chain. Each
 # submission prints sbatch's "Submitted batch job N" line (compute-access hedge.sh reads it).
 #
 # Knobs (environment):
@@ -23,8 +23,8 @@
 #   CLUSTER=<name>       override detection
 #
 # HEDGED RACE ACROSS CLUSTERS, then the chain on the winner:
-#   every cluster:   STAMP=<ts> SEGMENTS=1 bash scripts/lightgen/submit_release.sh
-#   the winner only: STAMP=<ts> SEGMENTS=2 SEG_START=2 DEPEND=<winner job> bash scripts/lightgen/submit_release.sh
+#   every cluster:   STAMP=<ts> SEGMENTS=1 bash scripts/internal/submit_release.sh
+#   the winner only: STAMP=<ts> SEGMENTS=2 SEG_START=2 DEPEND=<winner job> bash scripts/internal/submit_release.sh
 # Only segment 1 is raced: under `afterany` a cancelled loser would release its successors.
 #
 # Per-cluster header facts: compute-access skill, alliance/overview.md (validated 2026-09-07 for
@@ -45,7 +45,7 @@ CLUSTER="${CLUSTER:-$(scontrol show config 2>/dev/null | awk -F'= ' '/^ClusterNa
 ROOT=$(cd -P "${LIGHTGEN_MVPAINT_ROOT:-$HOME/scratch/lightgen_mvpaint}" && pwd -P)
 REPO=$ROOT/Hunyuan3D-2.1-emissive
 DATA=$ROOT/release_hf
-BODY=$REPO/hy3dpaint/scripts/lightgen/train_release_body.sh
+BODY=$REPO/hy3dpaint/scripts/internal/train_release_body.sh
 
 if [ "$SMOKE" = 1 ]; then
     WALLTIME=${WALLTIME:-01:00:00}; NAME=release_alpha_thumb_smoke; JOB_PREFIX=mvpaint_relsmoke
@@ -120,7 +120,7 @@ for i in $(seq "$SEG_START" $(( SEG_START + SEGMENTS - 1 ))); do
         echo "# ---- constants of this submission (written by submit_release.sh on $(date -Is)) ----"
         printf 'CLUSTER=%q\nROOT=%q\nREPO=%q\nDATA=%q\nSTAMP=%q\nCOMMIT=%q\nSMOKE=%q\nNAME=%q\nRUN=%q\nJOB_PREFIX=%q\n' \
             "$CLUSTER" "$ROOT" "$REPO" "$DATA" "$STAMP" "$COMMIT" "$SMOKE" "$NAME" "$RUN" "$JOB_PREFIX"
-        echo "# ---- body: scripts/lightgen/train_release_body.sh at $COMMIT ----"
+        echo "# ---- body: scripts/internal/train_release_body.sh at $COMMIT ----"
         cat "$BODY"
     } > "$JOB"
     if [ $DRY = 1 ]; then echo "[dry-run] wrote $JOB"; sed -n '1,/^# ---- body/p' "$JOB"; dep="<job of s$i>"; continue; fi

@@ -1,7 +1,7 @@
 # LightGen: pbr->emission multiview fine-tune WITH alpha, thumbnail reference, on the RELEASED
 # dataset (Hugging Face 3dlg-hcvc/LightgenBench) -- the JOB BODY, for any Alliance cluster.
 #
-# Not run by hand. scripts/lightgen/submit_release.sh writes a job file = a cluster-specific
+# Not run by hand. scripts/internal/submit_release.sh writes a job file = a cluster-specific
 # #SBATCH header + literal assignments of
 #     CLUSTER ROOT REPO DATA STAMP COMMIT SMOKE NAME RUN JOB_PREFIX
 # + this file, and submits that. Slurm spools the job file at submit time, so a queued segment
@@ -18,9 +18,9 @@
 # and the thumbnails are the same TexVerse files.
 #
 # PREREQUISITES on the cluster, all under $ROOT (= <scratch>/lightgen_mvpaint), each gated:
-#   env/           scripts/lightgen/stage_alliance.sh env      (python 3.12, torch 2.11.0)
-#   hf_home/       scripts/lightgen/stage_alliance.sh weights  (Hunyuan3D-2.1 pinned + dinov2-giant)
-#   release_hf/    scripts/lightgen/stage_alliance.sh data     (the HF tars, sha256-verified)
+#   env/           scripts/internal/stage_alliance.sh env      (python 3.12, torch 2.11.0)
+#   hf_home/       scripts/internal/stage_alliance.sh weights  (Hunyuan3D-2.1 pinned + dinov2-giant)
+#   release_hf/    scripts/internal/stage_alliance.sh data     (the HF tars, sha256-verified)
 #   Hunyuan3D-2.1-emissive/   the clone, branch lightgen, at the commit the job was submitted on
 #
 # AFTER THE RUN: the troughs stay on the cluster's scratch. Pull <logdir>/checkpoints/troughs/

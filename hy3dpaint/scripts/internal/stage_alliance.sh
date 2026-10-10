@@ -3,7 +3,7 @@
 # Run on the cluster's LOGIN node (it has the network; most compute nodes do not), from the
 # clone at <scratch>/lightgen_mvpaint/Hunyuan3D-2.1-emissive (branch lightgen):
 #
-#   bash hy3dpaint/scripts/lightgen/stage_alliance.sh [env|weights|data|check|all]    # default all
+#   bash hy3dpaint/scripts/internal/stage_alliance.sh [env|weights|data|check|all]    # default all
 #
 # Every step is idempotent: it checks first and skips what is already there. `all` ends with
 # STAGE_ALLIANCE_OK. Long step: `data` (37 GB from Hugging Face); run the script under nohup

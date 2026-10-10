@@ -7,7 +7,7 @@
 # 50,000 x 16 = 800k shape-visits = ~22 epochs of 36,426.
 #
 # THIS FILE IS A TEMPLATE. It runs on any Alliance cluster, so it carries two tokens instead
-# of absolute paths, and the job body (scripts/lightgen/train_release_body.sh) writes the
+# of absolute paths, and the job body (scripts/internal/train_release_body.sh) writes the
 # config it actually trains with into node-local storage each segment:
 #   __ROOT__   the cluster's persistent root, <scratch>/lightgen_mvpaint (venv, hf_home, log)
 #   __STAGE__  $SLURM_TMPDIR/lightgen_release: the unpacked release, re-laid-out to the
@@ -18,7 +18,7 @@
 # paper value). train.py names the logdir after this file's basename, so the generated copy
 # keeps it.
 #
-# Launcher: scripts/lightgen/submit_release.sh (login node; cluster-aware header + the body).
+# Launcher: scripts/internal/submit_release.sh (login node; cluster-aware header + the body).
 # Validation during training is val64 of the NEW val split
 # (scripts/lightgen/val64_release_shas.txt, the make_val_subset.py rule on the 200); only 28
 # of the old val64 are in the new val split.
@@ -40,7 +40,7 @@ model:
     noise_in_channels: 24
 
     stable_diffusion_config:
-      # Path is deterministic, not copied by hand: scripts/lightgen/stage_alliance.sh pins
+      # Path is deterministic, not copied by hand: scripts/internal/stage_alliance.sh pins
       # revision 0b94677654c57bb9a6b6845cd7b704ccf551d327 -- the same snapshot the venus env
       # runs -- so HF_HOME/hub/models--<repo>/snapshots/<rev>/ resolves to exactly this.
       # Pinning the revision is what makes fir and venus the same weights rather than
