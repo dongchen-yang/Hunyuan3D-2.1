@@ -143,10 +143,19 @@ bash $G/train-check.sh <tree> <out> fresh|resume                # one training c
   copies (`make_inputs.py`): the paper run's 204 test shapes and the release run's 200, each with
   `subset20.txt` (every 10th shape) and a `MANIFEST.sha256`. It compares the six views
   `<sha>/seed00/00{0..5}_emission.png` (`compare_views.py`) under the pass rule.
-- Where: the workstation 4090 (both lock files; `run_checks.py` uses it only when it is free right
-  now), else Solar's RTX PRO 6000 Blackwell Server Edition (cs-venus-19, `star2/checks.sbatch`,
-  subset20 baselines only). Training checks run on that Blackwell type only (a 4090 cannot train this
-  model). Baselines and envelopes per type: `baselines.json`.
+- Where (2026-10-12, Dongchen: use the lab machines and the star2 nodes): `run_checks.py` looks once
+  and uses every GPU that is free right now, never waiting: the workstation 4090 (both lock files),
+  sp4090 once admitted (the same paths, the env copied, `C/tooling/activate_sp4090.sh`, its lock
+  file), and on Solar every free GPU of a type with baselines, on our nodes only: RTX PRO 6000
+  Blackwell Server Edition (cs-venus-19), Max-Q (cs-venus-05), L40S (cs-venus-15/16/17), A40
+  (cs-venus-07/09/13/14); single-GPU jobs of 6 CPUs and 48 GB (120 GB for training), submitted with a
+  deadline and canceled if not running after 2 min. Gate shapes are split over the slots by speed. A
+  type judges a gate once it has 2 byte-identical full runs of `pre-refactor`
+  (`--record_baseline`, which compares each new run with the first), or 4 runs as an envelope.
+  Training checks run on a type with training baselines, so far the Blackwell SE (training needs
+  >= 48 GB; a 4090 cannot train this model). Baselines and envelopes per type: `baselines.json`.
+  `--entry fork` runs the gates with the tree's own
+  `hy3dpaint/predict_emission_views.py` (step 13) instead of the frozen parent predictor.
 - Routine steps: subset20 (about 2 min on the 4090 plus the model load). Full (`--full`): 204 and 200
   shapes, about 15 min each, for steps that touch the model, the loader, `train.py` or the configs,
   and before step 15.

@@ -61,5 +61,57 @@
     "/local-scratch/localhome/dya78/lightgen_eval_local/hunyuan_refactor_checks/out/bwse/bwse_pre-refactor_g/resume_run4/record.jsonl"
    ]
   }
+ },
+ "l40s": {
+  "paper": {
+   "run": "/local-scratch/localhome/dya78/lightgen_eval_local/hunyuan_refactor_checks/out/l40s/base_l40s_run1/merged_paper",
+   "shas": "shas.txt",
+   "envelope": [
+    "/local-scratch/localhome/dya78/lightgen_eval_local/hunyuan_refactor_checks/out/l40s/base_l40s_run1/merged_paper"
+   ]
+  },
+  "release": {
+   "run": "/local-scratch/localhome/dya78/lightgen_eval_local/hunyuan_refactor_checks/out/l40s/base_l40s_run1/merged_release",
+   "shas": "shas.txt",
+   "envelope": [
+    "/local-scratch/localhome/dya78/lightgen_eval_local/hunyuan_refactor_checks/out/l40s/base_l40s_run1/merged_release"
+   ]
+  }
+ },
+ "bwmq": {
+  "paper": {
+   "run": "/local-scratch/localhome/dya78/lightgen_eval_local/hunyuan_refactor_checks/out/bwmq/base_bwmq_run1/merged_paper",
+   "shas": "shas.txt",
+   "envelope": [
+    "/local-scratch/localhome/dya78/lightgen_eval_local/hunyuan_refactor_checks/out/bwmq/base_bwmq_run1/merged_paper",
+    "/local-scratch/localhome/dya78/lightgen_eval_local/hunyuan_refactor_checks/out/bwmq/base_bwmq_run2/merged_paper"
+   ],
+   "identical": true
+  },
+  "release": {
+   "run": "/local-scratch/localhome/dya78/lightgen_eval_local/hunyuan_refactor_checks/out/bwmq/base_bwmq_run1/merged_release",
+   "shas": "shas.txt",
+   "envelope": [
+    "/local-scratch/localhome/dya78/lightgen_eval_local/hunyuan_refactor_checks/out/bwmq/base_bwmq_run1/merged_release",
+    "/local-scratch/localhome/dya78/lightgen_eval_local/hunyuan_refactor_checks/out/bwmq/base_bwmq_run2/merged_release"
+   ],
+   "identical": true
+  }
+ },
+ "a40": {
+  "paper": {
+   "run": "/local-scratch/localhome/dya78/lightgen_eval_local/hunyuan_refactor_checks/out/a40/base_a40_run1/merged_paper",
+   "shas": "shas.txt",
+   "envelope": [
+    "/local-scratch/localhome/dya78/lightgen_eval_local/hunyuan_refactor_checks/out/a40/base_a40_run1/merged_paper"
+   ]
+  },
+  "release": {
+   "run": "/local-scratch/localhome/dya78/lightgen_eval_local/hunyuan_refactor_checks/out/a40/base_a40_run1/merged_release",
+   "shas": "shas.txt",
+   "envelope": [
+    "/local-scratch/localhome/dya78/lightgen_eval_local/hunyuan_refactor_checks/out/a40/base_a40_run1/merged_release"
+   ]
+  }
  }
 }

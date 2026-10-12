@@ -16,6 +16,8 @@
 #   GATE_SNAPSHOT  the Hunyuan3D-2.1 paint snapshot dir (rev 0b94677…)
 #   GATE_LOCKS     lock files to take, space separated, or "none" (inside a Slurm job)
 #   GATE_DETMODE=1 PyTorch's deterministic mode through detmode/sitecustomize.py
+#   GATE_ENTRY=fork  run the tree's own hy3dpaint/predict_emission_views.py (step 13) instead of the
+#                  frozen parent predictor; the same inputs, flags and output layout
 set -euo pipefail
 case $# in 3|4) ;; *) echo "usage: gate.sh <tree> <out_dir> paper|release [<shas_file>|subset20]"; exit 2 ;; esac
 TREE=$1; OUT=$2; RUN=$3; SHAS=${4:-}
@@ -31,7 +33,11 @@ esac
 IN=$C/inputs/$RUN
 CKPT=$C/ckpts/$CKRUN/ckpts/troughs/${CKFILE%.ckpt}.weights.ckpt   # slim_ckpt.py's weights-only copy
 CFG=$C/ckpts/$CKRUN/config.yaml                                    # the run's own config (jupiter)
-PRED=$C/tooling/repo/evaluation/mvpaint_bridge/predict_emission_views.py
+case ${GATE_ENTRY:-parent} in
+  parent) PRED=$C/tooling/repo/evaluation/mvpaint_bridge/predict_emission_views.py; ROOTARG=(--hy3dpaint_root "$TREE/hy3dpaint") ;;
+  fork)   PRED=$TREE/hy3dpaint/predict_emission_views.py; ROOTARG=() ;;
+  *) echo "GATE_ENTRY must be parent or fork"; exit 2 ;;
+esac
 [ "$SHAS" = subset20 ] && SHAS=$IN/subset20.txt
 SHAS=${SHAS:-$IN/shas.txt}
 for f in "$TREE/hy3dpaint/train.py" "$CKPT" "$CFG" "$PRED" "$SHAS" "$SNAP/model_index.json"; do
@@ -71,7 +77,7 @@ data_file = $OUT/.coverage
 EOT
   export COVERAGE_PROCESS_START=$OUT/.coveragerc PYTHONPATH=$HERE/detmode:${GATE_PYLIB:-$C/tooling/pylib}${PYTHONPATH:+:$PYTHONPATH}
 fi
-echo "host=$(hostname -s) gpu=$(nvidia-smi --query-gpu=name --format=csv,noheader -i "${CUDA_VISIBLE_DEVICES:-0}" | head -1) detmode=${GATE_DETMODE:-0}" | tee "$OUT/gpu.txt"
+echo "host=$(hostname -s) gpu=$(nvidia-smi --query-gpu=name --format=csv,noheader -i "${CUDA_VISIBLE_DEVICES:-0}" | head -1) detmode=${GATE_DETMODE:-0} entry=${GATE_ENTRY:-parent}" | tee "$OUT/gpu.txt"
 nvidia-smi --query-compute-apps=pid,used_memory --format=csv,noheader || true
 
 # The examples JSON: this host's absolute paths of the listed shapes, in the shapes file's order.
@@ -91,7 +97,7 @@ print(f"[gate] {len(dirs)} shapes")
 EOF
 N=$(python -c "import json,sys; print(len(json.load(open(sys.argv[1]))))" "$JSON")
 python "$PRED" --ckpt "$CKPT" --config "$CFG" --examples_json "$JSON" --thumbnail_dir "$IN/thumbs" \
-  --snapshot "$SNAP" --hy3dpaint_root "$TREE/hy3dpaint" --seeds 1 --seed_base 0 --val_steps 30 --out "$OUT"
+  --snapshot "$SNAP" ${ROOTARG[@]+"${ROOTARG[@]}"} --seeds 1 --seed_base 0 --val_steps 30 --out "$OUT"
 got=$(find "$OUT" -mindepth 2 -maxdepth 2 -type d -name seed00 | wc -l)
 [ "$got" = "$N" ] || { echo "ABORT: $got of $N shapes written"; exit 1; }
 rm -rf "$OUT/.hf_modules"

@@ -18,7 +18,7 @@
 #       checks.sbatch | ssh star2 'sbatch --deadline=now+<time + 3 min>'
 # No `-w` (a pinned job on our own nodes evicts another lab's running job); --deadline makes a job
 # that cannot start at once go away instead of waiting.
-# Task file (under $H), one task per line:  <gpu> <name> paper|release|fresh|resume <tree> [<shas>]
+# Task file (under $H), one task per line:  <gpu> <name> paper|release|fresh|resume[+cov|+fork] <tree> [<shas>]
 #   <shas>: a file under $H, or "subset20" (the run's inputs subset20.txt); omitted: every shape.
 # Output: $H/out/__LABEL__/<name>/ (the views, or record.jsonl), gpu.txt, logs/, status.txt
 # (one line per task, then CHECKS_DONE or CHECKS_INCOMPLETE).
@@ -99,18 +99,19 @@ while read -r g name kind tree shas; do
   [ -n "${g:-}" ] || continue
   [ -d "$H/trees/$tree/hy3dpaint" ] || die "task $name: no tree $H/trees/$tree"
   case $shas in "") ;; subset20) ;; *) shas=$H/$shas ;; esac
-  case $kind in paper|release|fresh|resume|paper+cov|release+cov|fresh+cov|resume+cov) ;; *) die "task file: unknown kind $kind" ;; esac
+  case $kind in paper|release|fresh|resume|paper+cov|release+cov|fresh+cov|resume+cov|paper+fork|release+fork) ;; *) die "task file: unknown kind $kind" ;; esac
   TASKS+=("$g|$name|$kind|$H/trees/$tree|$shas")
 done < "$H/$TASKFILE"
 run_queue() {
-  local gq=$1 t g name kind tree shas rc s cov
+  local gq=$1 t g name kind tree shas rc s cov entry
   for t in "${TASKS[@]}"; do
     IFS='|' read -r g name kind tree shas <<< "$t"
     [ "$g" = "$gq" ] || continue
     cov=0; case $kind in *+cov) cov=1; kind=${kind%+cov} ;; esac
-    say "launch $name ($kind, $(basename "$tree"), coverage=$cov) on gpu $g"; s=$(date +%s)
+    entry=parent; case $kind in *+fork) entry=fork; kind=${kind%+fork} ;; esac
+    say "launch $name ($kind, $(basename "$tree"), coverage=$cov, entry=$entry) on gpu $g"; s=$(date +%s)
     case $kind in
-      paper|release) HUNYUAN_COVERAGE=$cov CUDA_VISIBLE_DEVICES=${DEVS[$g]} bash "$GT/gate.sh" "$tree" "$OUT/$name" "$kind" ${shas:+"$shas"} > "$OUT/logs/$name.log" 2>&1 ;;
+      paper|release) GATE_ENTRY=$entry HUNYUAN_COVERAGE=$cov CUDA_VISIBLE_DEVICES=${DEVS[$g]} bash "$GT/gate.sh" "$tree" "$OUT/$name" "$kind" ${shas:+"$shas"} > "$OUT/logs/$name.log" 2>&1 ;;
       fresh|resume)  HUNYUAN_COVERAGE=$cov CUDA_VISIBLE_DEVICES=${DEVS[$g]} bash "$GT/train-check.sh" "$tree" "$OUT/$name" "$kind" > "$OUT/logs/$name.log" 2>&1 ;;
     esac
     rc=$?; echo "$name exit=$rc secs=$(( $(date +%s) - s )) $(tail -1 "$OUT/logs/$name.log")" | tee -a "$OUT/status.g$gq"
