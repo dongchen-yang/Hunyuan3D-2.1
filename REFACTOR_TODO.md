@@ -27,7 +27,7 @@ same for `plans/2026-09-16-hunyuan3d-paint-refactor.md`); use them as a source o
 - [x] 10. Our other edits inside upstream's files
 - [x] 11. The JSON builders and the release data scripts
 - [x] 12. Environment files
-- [ ] 13. Release layer: generic entry points for LightgenBench users (per D15)
+- [x] 13. Release layer: generic entry points for LightgenBench users (per D15)
 - [ ] 14. Docs
 - [ ] 15. Branch `release` (per D11) and the rename to `Hunyuan3D-Emission/` (per D4) (needs Dongchen's review of the branch, then his go)
 - [ ] 16. Cut-over (per D8)
@@ -654,23 +654,78 @@ torch's `<82` (81.0.0), which still ships the `pkg_resources` that pytorch-light
 The code will be published for LightgenBench users to train and run. No user or cluster paths in this
 layer. Needs steps 5b and 11; its README commands are written in step 14.
 
-- [ ] `scripts/lightgenbench/prepare_lightgenbench.sh <download_dir> <data_root>`: the generic half of
+- [x] `scripts/lightgenbench/prepare_lightgenbench.sh <download_dir> <data_root>`: the generic half of
   `stage_alliance.sh` and the data part of `train_release_body.sh`: check the Hugging Face tars
   (`data/{train,val,test}/{multiview,thumbnail}/*.tar`) against `checksums.sha256`, untar,
   `relayout_release.py` into `render_tex/`, `render_cond/000.png` and `<thumbs>/<uuid>.png`, then
-  the example JSONs with `make_74k_jsons.py` and `val64_release_shas.txt`.
-- [ ] Filling the release template's tokens (`__ROOT__`, `__STAGE__`, `__NUM_WORKERS__`) without
+  the example JSONs with `make_74k_jsons.py` and `val64_release_shas.txt`. Named
+  `unpack_hf_dataset.sh`, as TEXGen-Emission's one data script for users (Dongchen 2026-10-10, there).
+- [x] Filling the release template's tokens (`__ROOT__`, `__STAGE__`, `__NUM_WORKERS__`) without
   hand edits; the config states the recipe (global batch 16 = 4 GPUs × 4, LR 7e-5, 50,000 steps,
   cosine with warm restarts every 10,000, troughs every 10,000, 40k selected on the validation split).
-- [ ] The inference entry per D15, writing Keep stable 12's layout; gated byte-identical against the
+- [x] The inference entry per D15, writing Keep stable 12's layout; gated byte-identical against the
   frozen parent predictor on both runs.
-- [ ] `train.py` requires wandb (`:316-330`): document `WANDB_MODE=offline` (making it optional is
+- [x] `train.py` requires wandb (`:316-330`): document `WANDB_MODE=offline` (making it optional is
   under Later).
-- [ ] The internal launchers stay as they are.
+- [x] The internal launchers stay as they are.
 
 **Instructions:**
 
-**Result:**
+- `hy3dpaint/scripts/lightgenbench/unpack_hf_dataset.sh <download_dir> <data_dir>` (any working
+  directory; the training env): checks `splits.json` and every train/val/test multiview and thumbnail
+  tar against the release's `checksums.sha256`, unpacks them into `<data_dir>/shapes/`, writes the
+  split lists from `splits.json`, runs `relayout_release.py` on all three splits and
+  `make_74k_jsons.py` with the release run's arguments (its A0-A7 checks; `--expect_train` is the
+  train list's length, nothing may be missing), and writes `release_test.json` after checking every
+  file the loader opens. The template's tokens are not changed (the job body still fills them): the
+  script writes `<data_dir>/lightgen-emission-release-alpha-thumb.yaml`, the template with the
+  snapshot line replaced, `__STAGE__` = `<data_dir>` and `__NUM_WORKERS__` = CPUs / 4 - 2 (at least
+  2; `NUM_WORKERS` overrides), and refuses a token left on a non-comment line. The snapshot is the
+  pinned Hunyuan3D-2.1 revision from the Hugging Face cache (`local_files_only`, so a missing
+  download fails before the unpack) or `SNAPSHOT=<dir>`. TEXGen's script reads its data dir from an
+  environment variable in the config; here the template's tokens are the job body's interface (Keep
+  stable 10), so the filled copy is written instead.
+- `hy3dpaint/predict_emission_views.py` (D15 as recommended; D15 itself stays open for Dongchen's
+  review): the parent predictor's loading, `validation_step` sampling, seeding and writing,
+  unchanged, without the parent plumbing (`--hy3dpaint_root`, the `seedutil` import: `sample_seed` is
+  a verbatim copy, as in the TRELLIS.2 and TEXGen lanes) and without `--smoke_untrained`. It chdirs
+  into `hy3dpaint/` and imports the loader by its new path (`TextureDataset`). Tests:
+  `scripts/lightgen/test_predict_emission_views.py` (the seed against the parent's values, the
+  reference-image rule, the panel split).
+- The release config's header names both fillers, the learning-rate restarts, the 40k selection and
+  `WANDB_MODE=offline`. The README commands are step 14's.
+- Checks: the parent gates (subset20) and the fork entry on every shape of both runs
+  (`run_checks.py --entry fork --full`), byte-identical to the parent predictor's baselines; the
+  data script on a slice of the real release (below); the tests.
+
+**Result:** (2026-10-12) Checks on `7e974a0`:
+
+- The fork entry (`run_checks.py --entry fork --full`), every shape of both runs, on the Max-Q (the
+  4090s were busy): paper 204 (1,224 views) and release 200 (1,200 views) IDENTICAL to the frozen
+  parent predictor's baselines.
+- The parent gates, subset20, split over sp4090 and the Max-Q: IDENTICAL.
+- The data script on a slice of the real release (Hugging Face revision `d152558`: the val and test
+  tars and train tar 00000 of multiview and thumbnail, 1,400 shapes; `splits.json` cut to those 1,000
+  train shapes and a `checksums.sha256` for the 7 files): checked, unpacked and laid out, A0-A7 pass.
+  The 200 test shapes' 7,600 files and 200 thumbnails are byte-identical to the release gate's inputs
+  (`C/inputs/release/MANIFEST.sha256`), so a user who unpacks the dataset gets the gate's inputs. Run
+  twice into one data dir whose name holds a space, `&` and `#`: the same lists, and the config loads
+  with OmegaConf.
+- Tests: 23 of 23 (19 before, 4 new).
+- Codex's review of this step and the check tooling (8 findings): 7 fixed. Here: a second unpack
+  into the same data dir failed (`multiview/` came back beside `render_tex/`; the tars now unpack it
+  as `render_tex/`), and the `sed` fill broke on `&` or `#` in a path (now Python). In the tooling:
+  a record run takes one type (a split run would record each type's part as a full run), an empty
+  shapes list fails, the fork entry must be IDENTICAL, Solar jobs exclude theia-lab's nodes,
+  `baselines.json` is replaced atomically. Not changed: a relative `--thumbnail_dir`; the fork
+  resolves it before its chdir, which is right. The parent predictor has the bug (step 15's
+  follow-ups).
+- Found: the release's `checksums.sha256` changed on 2026-09-22 (a dataset-card image added, every
+  data line the same), so the job body's pin (`16ad1851…`) fails on a download of the current
+  revision (`a2d81c1f…`). `unpack_hf_dataset.sh` checks the tars against the downloaded file and pins
+  nothing. The internal launchers stay as they are; `CLAUDE.md` records it (step 14).
+
+PASS.
 
 ### 14. Docs
 
@@ -732,7 +787,9 @@ before his review (Dongchen 2026-10-11).
   star2 worker reuses the fork tree of its first bootstrap until `BOOTSTRAP_OK` and `.fork_ok` are
   deleted, and shares `HF_MODULES_CACHE` (`hunyuan_worker.sbatch:153,250`); `stage_hunyuan_host.sh:46,68`
   needs a local `trough-step=00020000.ckpt` that is gone; `test_bridge.py:402,417` pin their cwd to
-  the main checkout; the predictor's docstring (`:259-260`) counts 5 VAE `posterior.sample()` calls at
+  the main checkout; the predictor reads a relative `--thumbnail_dir` from inside `hy3dpaint/`,
+  after its chdir (it checks the caller's directory, `:90-103`; the gate passes absolute paths);
+  the predictor's docstring (`:259-260`) counts 5 VAE `posterior.sample()` calls at
   `unet/model.py:233` (there are six, at `:234`); the two 4090 lock files.
 - [ ] Decide here: rename the GitHub repository `dongchen-yang/Hunyuan3D-2.1` too (TEXGen kept its
   name)? Push `release` only on Dongchen's go.

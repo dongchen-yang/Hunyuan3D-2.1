@@ -5,11 +5,17 @@
 # the paper run's config (24-channel conv_in, LR 7e-5, bs4 x 4 GPUs = global 16, 50,000 steps,
 # checkpoint/validation every 1,250, trough checkpoints every 10,000); the reasoning is in that file
 # and in its -fir and venus-05 twins (tag pre-refactor).
-# 50,000 x 16 = 800k shape-visits = ~22 epochs of 36,426.
+# 50,000 x 16 = 800k shape-visits = ~22 epochs of 36,426. The learning rate restarts every
+# 10,000 steps (1,000 warm-up + 9,000 cosine; HunyuanPaint.configure_optimizers), and a checkpoint
+# is kept at each restart; the release run's scored checkpoint, 40,000, was chosen on the
+# validation split. train.py logs to Weights & Biases: log in, or set WANDB_MODE=offline.
 #
-# THIS FILE IS A TEMPLATE. It runs on any Alliance cluster, so it carries two tokens instead
-# of absolute paths, and the job body (scripts/internal/train_release_body.sh) writes the
-# config it actually trains with into node-local storage each segment:
+# THIS FILE IS A TEMPLATE: it carries tokens instead of absolute paths, and two scripts write the
+# config that trains from it, under the same basename. On one machine,
+# scripts/lightgenbench/unpack_hf_dataset.sh writes <data_dir>/lightgen-emission-release-alpha-thumb.yaml
+# with the snapshot, the data dir for __STAGE__ and the workers. On an Alliance cluster, the job
+# body (scripts/internal/train_release_body.sh) writes the config into node-local storage each
+# segment:
 #   __ROOT__   the cluster's persistent root, <scratch>/lightgen_mvpaint (venv, hf_home, log)
 #   __STAGE__  $SLURM_TMPDIR/lightgen_release: the unpacked release, re-laid-out to the
 #              fixture layout the loader reads (scripts/lightgen/relayout_release.py), the
