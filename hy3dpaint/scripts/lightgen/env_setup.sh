@@ -1,4 +1,7 @@
 #!/usr/bin/env bash
+# The record of how the workstation `hunyuanpaint` conda env was built (upstream's requirements.txt plus
+# our pins). The minimal set the emission model imports, at the same versions, is requirements-emission.txt
+# at the repository root; an env built from it alone reproduces the gate byte for byte (refactor step 12).
 # LightGen Task 2: `hunyuanpaint` conda env setup -- replayable install record.
 #
 # This is a RECORD of exactly what was installed and why, not just a convenience script.

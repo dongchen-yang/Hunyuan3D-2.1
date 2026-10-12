@@ -1,0 +1,27 @@
+# Hunyuan3D-Emission: what the emission model's training (hy3dpaint/train.py) and inference import, at
+# the versions of the `hunyuanpaint` env that produced every published result and every refactor check
+# (Python 3.10). Upstream's requirements.txt, beside this file, also covers its demo, app and API code.
+#
+#   pip install -r requirements-emission.txt --extra-index-url https://download.pytorch.org/whl/cu128
+#
+# Pinned on purpose: diffusers 0.30.0 copies the custom pipeline (./hunyuanpaintpbr) into
+# HF_MODULES_CACHE on every load, so give each process its own cache; pytorch-lightning 1.9.5 wrote the
+# published checkpoints; torch 2.11 with CUDA 12.8 runs on the 4090, L40S, A40, H100 and RTX PRO 6000.
+torch==2.11.0
+torchvision==0.26.0
+pytorch-lightning==1.9.5
+torchmetrics==1.6.0
+diffusers==0.30.0
+transformers==4.46.0
+tokenizers==0.20.3
+huggingface-hub==0.30.2
+accelerate==1.1.1
+safetensors==0.4.4
+omegaconf==2.3.0
+einops==0.8.0
+numpy==1.24.4
+pillow==11.3.0
+opencv-python==4.10.0.84
+tqdm==4.66.5
+wandb==0.28.1
+pytest==9.1.1

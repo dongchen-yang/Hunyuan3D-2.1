@@ -26,7 +26,7 @@ same for `plans/2026-09-16-hunyuan3d-paint-refactor.md`); use them as a source o
 - [x] 9. Cleanups inside the folded code
 - [x] 10. Our other edits inside upstream's files
 - [x] 11. The JSON builders and the release data scripts
-- [ ] 12. Environment files
+- [x] 12. Environment files
 - [ ] 13. Release layer: generic entry points for LightgenBench users (per D15)
 - [ ] 14. Docs
 - [ ] 15. Branch `release` (per D11) and the rename to `Hunyuan3D-Emission/` (per D4) (needs Dongchen's review of the branch, then his go)
@@ -594,7 +594,7 @@ warning (it was 1); subset gates IDENTICAL (job 296135). PASS.
 
 ### 12. Environment files
 
-- [ ] `requirements.txt` is upstream's (demo extras such as gradio, open3d, pymeshlab, cupy, rembg,
+- [x] `requirements.txt` is upstream's (demo extras such as gradio, open3d, pymeshlab, cupy, rembg,
   deepspeed, `bpy==4.0`; no torch line); `env_setup.sh:108` installs it minus `bpy`. Add one file for
   what our training and inference import (torch, torchvision, pytorch-lightning 1.9.5, omegaconf,
   diffusers 0.30.0, transformers, huggingface_hub, einops, numpy, Pillow, opencv, tqdm, wandb) with
@@ -602,11 +602,11 @@ warning (it was 1); subset gates IDENTICAL (job 296135). PASS.
   4.46.0, numpy 1.24.4, opencv-python 4.10.0.84, huggingface-hub 0.30.2) and the Alliance venv
   (`stage_alliance.sh:35-56`: Python 3.12, torch 2.11.0 wheelhouse, transformers 4.46.2, the opencv
   4.12.0 module). Upstream's file stays for upstream's code (D9).
-- [ ] `env_setup.sh` (`:35` defaults to `/local-scratch/localhome/dya78/tmp`) and its final check
+- [x] `env_setup.sh` (`:35` defaults to `/local-scratch/localhome/dya78/tmp`) and its final check
   `smoke_load_pretrained.py` (needs a GPU and the hub cache).
-- [ ] Gaps: `stage_alliance.sh:91` uses the `hf` CLI, which the conda env lacks (huggingface-hub
+- [x] Gaps: `stage_alliance.sh:91` uses the `hf` CLI, which the conda env lacks (huggingface-hub
   0.30.2 has `huggingface-cli`).
-- [ ] Invariants the doc states: the snapshot rev, diffusers 0.30.0 (whose per-load copy of the custom
+- [x] Invariants the doc states: the snapshot rev, diffusers 0.30.0 (whose per-load copy of the custom
   pipeline is why `HF_MODULES_CACHE` must be node-local), pytorch-lightning 1.9.5 (the checkpoints'
   format).
 
@@ -616,7 +616,29 @@ not a failure).
 
 **Instructions:**
 
-**Result:**
+- `requirements-emission.txt` at the fork root: the 18 packages training and inference import
+  (torch 2.11.0, torchvision 0.26.0, pytorch-lightning 1.9.5, torchmetrics 1.6.0, diffusers 0.30.0,
+  transformers 4.46.0, tokenizers 0.20.3, huggingface-hub 0.30.2, accelerate 1.1.1, safetensors
+  0.4.4, omegaconf 2.3.0, einops 0.8.0, numpy 1.24.4, pillow 11.3.0, opencv-python 4.10.0.84, tqdm
+  4.66.5, wandb 0.28.1, pytest 9.1.1), at the conda `hunyuanpaint` env's versions, installed with the
+  cu128 index. Its header states why diffusers and pytorch-lightning are pinned. The Alliance venv's
+  differences (Python 3.12, transformers 4.46.2, the opencv module) stay in `stage_alliance.sh`.
+  Upstream's `requirements.txt` is unchanged (D9).
+- `env_setup.sh` stays the record of how the workstation env was built (its `/local-scratch` default
+  and the GPU smoke `smoke_load_pretrained.py` included), with a header pointer to the new file.
+- The `hf` gap is not one: `stage_alliance.sh` runs `hf download` in its own venv, whose
+  huggingface_hub has the `hf` command (it staged four clusters in September); the conda env and the
+  new file (0.30.2) have `huggingface-cli`, which the README (step 14) uses.
+- The invariants: the file's header (diffusers 0.30.0 and the per-load copy, pytorch-lightning 1.9.5
+  and the checkpoints); the snapshot revision is in the README and `CLAUDE.md` (step 14).
+
+**Result:** (2026-10-12) Checks on `5e7af2e` (a new file and a comment): the gates, subset20,
+IDENTICAL on sp4090 (9 + 9 shapes) and the Max-Q (11 + 11). A throwaway env built from the file alone
+(`C/envs/reqtest`, uv, Python 3.10, the cu128 index): the tests pass (19 of 19), and paper subset20 on
+the workstation 4090 is IDENTICAL to the conda env's baseline. Seen while installing: uv flags
+transformers 4.46.0 as a yanked release (the exact pin installs it); setuptools comes in through
+torch's `<82` (81.0.0), which still ships the `pkg_resources` that pytorch-lightning 1.9.5's
+`lightning_fabric` imports (a deprecation warning). PASS.
 
 ### 13. Release layer: generic entry points for LightgenBench users (per D15)
 
