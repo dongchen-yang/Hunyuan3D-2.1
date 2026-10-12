@@ -1,5 +1,5 @@
 {
- "_doc": "Per GPU type and check: the baseline run and the envelope runs, all of tag pre-refactor (REFACTOR_TODO.md step 2). Gates (compare_views.py): a shape passes when each of its six views differs from the baseline by at most 1/255 per pixel on at most 0.5% of the values; any other shape must lie within the envelope (the largest difference between any two envelope runs). Training checks (compare_traincheck.py): the structure exact, every recorded value within its envelope. 'shas' names the inputs list the gate runs cover (shas.txt: every shape; subset20.txt). rtx4090 = the workstation 4090; bwse = RTX PRO 6000 Blackwell Server Edition (Solar cs-venus-19). The 2026-09-22 release views (lightgen_release_test200/views_step00040000, made with the full checkpoint, 5 seeds in one process) are byte-identical to run1 on all 200 shapes and serve as a 4090 envelope run. Training checks run with the math attention kernel (train-check.sh): with it every envelope pair is identical.",
+ "_doc": "Per GPU type and check: the baseline run and the envelope runs, all of tag pre-refactor (REFACTOR_TODO.md step 2). Gates (compare_views.py): a shape passes when each of its six views differs from the baseline by at most 1/255 per pixel on at most 0.5% of the values; any other shape must lie within the envelope (the largest difference between any two envelope runs). Training checks (compare_traincheck.py): the structure exact, every recorded value within its envelope. 'shas' names the inputs list the gate runs cover (shas.txt: every shape; subset20.txt). rtx4090 = the workstation 4090 (and sp4090, admitted below); bwse = RTX PRO 6000 Blackwell Server Edition (Solar cs-venus-19); bwmq = RTX PRO 6000 Blackwell Max-Q (cs-venus-05); l40s = L40S (cs-venus-15/16/17); a40 = A40 (cs-venus-07/09/13/14). A type judges a gate once it has 2 runs that are byte-identical ('identical': true, set by run_checks.py --record_baseline, which compares each new run with the first) or 4 runs as an envelope. The 2026-09-22 release views (lightgen_release_test200/views_step00040000, made with the full checkpoint, 5 seeds in one process) are byte-identical to run1 on all 200 shapes and serve as a 4090 envelope run. Training checks run with the math attention kernel (train-check.sh): with it every envelope pair is identical.",
  "rtx4090": {
   "paper": {
    "run": "/local-scratch/localhome/dya78/lightgen_eval_local/hunyuan_refactor_checks/out/rtx4090/pre-refactor_paper_full_run1",
@@ -67,15 +67,19 @@
    "run": "/local-scratch/localhome/dya78/lightgen_eval_local/hunyuan_refactor_checks/out/l40s/base_l40s_run1/merged_paper",
    "shas": "shas.txt",
    "envelope": [
-    "/local-scratch/localhome/dya78/lightgen_eval_local/hunyuan_refactor_checks/out/l40s/base_l40s_run1/merged_paper"
-   ]
+    "/local-scratch/localhome/dya78/lightgen_eval_local/hunyuan_refactor_checks/out/l40s/base_l40s_run1/merged_paper",
+    "/local-scratch/localhome/dya78/lightgen_eval_local/hunyuan_refactor_checks/out/l40s/base_l40s_run2/merged_paper"
+   ],
+   "identical": true
   },
   "release": {
    "run": "/local-scratch/localhome/dya78/lightgen_eval_local/hunyuan_refactor_checks/out/l40s/base_l40s_run1/merged_release",
    "shas": "shas.txt",
    "envelope": [
-    "/local-scratch/localhome/dya78/lightgen_eval_local/hunyuan_refactor_checks/out/l40s/base_l40s_run1/merged_release"
-   ]
+    "/local-scratch/localhome/dya78/lightgen_eval_local/hunyuan_refactor_checks/out/l40s/base_l40s_run1/merged_release",
+    "/local-scratch/localhome/dya78/lightgen_eval_local/hunyuan_refactor_checks/out/l40s/base_l40s_run2/merged_release"
+   ],
+   "identical": true
   }
  },
  "bwmq": {
@@ -103,15 +107,23 @@
    "run": "/local-scratch/localhome/dya78/lightgen_eval_local/hunyuan_refactor_checks/out/a40/base_a40_run1/merged_paper",
    "shas": "shas.txt",
    "envelope": [
-    "/local-scratch/localhome/dya78/lightgen_eval_local/hunyuan_refactor_checks/out/a40/base_a40_run1/merged_paper"
-   ]
+    "/local-scratch/localhome/dya78/lightgen_eval_local/hunyuan_refactor_checks/out/a40/base_a40_run1/merged_paper",
+    "/local-scratch/localhome/dya78/lightgen_eval_local/hunyuan_refactor_checks/out/a40/base_a40_run2/merged_paper"
+   ],
+   "identical": true
   },
   "release": {
    "run": "/local-scratch/localhome/dya78/lightgen_eval_local/hunyuan_refactor_checks/out/a40/base_a40_run1/merged_release",
    "shas": "shas.txt",
    "envelope": [
-    "/local-scratch/localhome/dya78/lightgen_eval_local/hunyuan_refactor_checks/out/a40/base_a40_run1/merged_release"
-   ]
+    "/local-scratch/localhome/dya78/lightgen_eval_local/hunyuan_refactor_checks/out/a40/base_a40_run1/merged_release",
+    "/local-scratch/localhome/dya78/lightgen_eval_local/hunyuan_refactor_checks/out/a40/base_a40_run2/merged_release"
+   ],
+   "identical": true
   }
- }
+ },
+ "_admitted_hosts": {
+  "sp4090": "rtx4090"
+ },
+ "_admitted_why": "sp4090 (cs-3dlg-24): tag pre-refactor, subset20 paper and release, IDENTICAL to the workstation rtx4090 runs (2026-10-12, C/out/rtx4090/sp4090_qual_pre-refactor)"
 }
