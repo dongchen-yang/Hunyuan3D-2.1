@@ -29,7 +29,7 @@ same for `plans/2026-09-16-hunyuan3d-paint-refactor.md`); use them as a source o
 - [ ] 12. Environment files
 - [ ] 13. Release layer: generic entry points for LightgenBench users (per D15)
 - [ ] 14. Docs
-- [ ] 15. Branch `release` (per D11) and the rename to `Hunyuan3D-Emission/` (per D4) (needs Dongchen's go)
+- [ ] 15. Branch `release` (per D11) and the rename to `Hunyuan3D-Emission/` (per D4) (needs Dongchen's review of the branch, then his go)
 - [ ] 16. Cut-over (per D8)
 - [ ] 17. Release cut: our internal files leave the published tree (per D10)
 
@@ -665,7 +665,11 @@ One doc of record inside the fork, keeping upstream's attribution, license and c
 
 **Result:**
 
-### 15. Branch `release` (per D11) and the rename to `Hunyuan3D-Emission/` (per D4) (needs Dongchen's go)
+### 15. Branch `release` (per D11) and the rename to `Hunyuan3D-Emission/` (per D4) (needs Dongchen's review of the branch, then his go)
+
+Before anything here: stop after step 14 and ask Dongchen to review the branch (`git log pre-refactor..`,
+`git diff pre-refactor`); nothing merges, no `release` branch is created and no parent commit happens
+before his review (Dongchen 2026-10-11).
 
 - [ ] The full gates and the training check on the branch head against the `pre-refactor`
   baselines; the tests.
