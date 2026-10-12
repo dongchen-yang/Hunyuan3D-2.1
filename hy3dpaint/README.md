@@ -1,5 +1,9 @@
 # Hunyuan3D-Paint 2.1
 
+> In this repository the model and the loader train the emission model (the root `README.md`);
+> the Training section below describes upstream's PBR training, which no longer runs here.
+> Quick Inference (`demo.py`) is upstream's and unchanged.
+
 Hunyuan3D-Paint 2.1 is a high quality PBR texture generation model for 3D meshes, powered by [RomanTex](https://github.com/oakshy/RomanTex) and [MaterialMVP](https://github.com/ZebinHe/MaterialMVP/).
 
 

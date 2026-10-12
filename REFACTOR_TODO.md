@@ -28,7 +28,7 @@ same for `plans/2026-09-16-hunyuan3d-paint-refactor.md`); use them as a source o
 - [x] 11. The JSON builders and the release data scripts
 - [x] 12. Environment files
 - [x] 13. Release layer: generic entry points for LightgenBench users (per D15)
-- [ ] 14. Docs
+- [x] 14. Docs
 - [ ] 15. Branch `release` (per D11) and the rename to `Hunyuan3D-Emission/` (per D4) (needs Dongchen's review of the branch, then his go)
 - [ ] 16. Cut-over (per D8)
 - [ ] 17. Release cut: our internal files leave the published tree (per D10)
@@ -732,7 +732,7 @@ PASS.
 One doc of record inside the fork, keeping upstream's attribution, license and citation (`LICENSE`,
 `Notice.txt`, upstream's README citation block).
 
-- [ ] Root `README.md` (upstream's, about the demo, the API and docker) becomes the doc of record, or a
+- [x] Root `README.md` (upstream's, about the demo, the API and docker) becomes the doc of record, or a
   separate `HUNYUAN3D_EMISSION.md` with upstream's README kept: decide here. Contents: what the fork
   is (one emission stream generated from six ground-truth PBR views, geometry and the TexVerse
   thumbnail; the conv_in layout; the unet swap; sampling without guidance); the two runs and their
@@ -743,13 +743,49 @@ One doc of record inside the fork, keeping upstream's attribution, license and c
   checkpointer; `val/emission_mse` is too noisy to select on; the 10,000-step warm restarts;
   `lr_abs=0.000` after a resume is a display artifact; the `HF_MODULES_CACHE` race; fir `bygpu` OOM at
   `.to(device)`); the upstream delta (`git diff --stat main`).
-- [ ] `hy3dpaint/README.md` (upstream's): keep, or fold into the doc of record.
-- [ ] A short `CLAUDE.md` at the fork root pointing at the doc of record (the sibling submodules have
+- [x] `hy3dpaint/README.md` (upstream's): keep, or fold into the doc of record.
+- [x] A short `CLAUDE.md` at the fork root pointing at the doc of record (the sibling submodules have
   one; this fork has none).
 
 **Instructions:**
 
-**Result:**
+- Decided here: the root `README.md` is the doc of record, for LightgenBench users, as TEXGen-Emission's
+  (upstream's attribution, license and citation at the top and bottom); upstream's README moves
+  unchanged to `README_hunyuan3d.md`, since its shape model, demo, app and API stay here (D12).
+  Contents: what the fork is and what differs (the 24-channel input and its order, one emission
+  stream started from albedo's, the thumbnail reference, `validation_step` sampling without
+  guidance, the loader), `git diff origin/main -- hy3dpaint/`, setup (`requirements-emission.txt`,
+  the pinned snapshot, dinov2-giant), data (`unpack_hf_dataset.sh`), training (the recipe, outputs,
+  resuming, fewer GPUs, `WANDB_MODE=offline`, `train.py` ignoring `key=value`), checkpoint choice,
+  inference on the test split (`predict_emission_views.py`, determinism per GPU type), tests, the
+  repository map. Not in it: the two runs' jupiter paths, the cluster launchers and the fir `bygpu`
+  OOM, which are for us (`CLAUDE.md`).
+- `hy3dpaint/README.md` kept (upstream's demo instructions hold) with a three-line note that its
+  Training section is upstream's PBR training, which no longer runs here.
+- `CLAUDE.md` at the fork root: the doc map, the branches, the two runs and the checkpoint contract,
+  the envs, the commands, checking a change, the traps (the `HF_MODULES_CACHE` race, the changed
+  `checksums.sha256` pin, `lr_abs`, checkpoint ranking, fir `bygpu`, `train.py`'s ignored overrides).
+- Found while writing, fixed (comments only): the release template's comment said that validating
+  at the checkpoint interval keeps the ranking current; pytorch-lightning 1.9.5 saves the checkpoint
+  in `on_train_batch_end`, before that step's validation (`training_epoch_loop.py:229, 250`), so each
+  checkpoint carries the previous validation's value, as `../docs/baselines/hunyuan3d-paint.md`
+  measured. The `-fir-xg` config keeps its bytes (D14). `HunyuanPaint`'s docstring said the reference
+  is the frontal albedo render; it is either, by the loader's `ref_source`.
+- Checks: the parent gates (subset20; the code changes are comments), the tests, and the README's
+  facts against the code (conv_in order `modules.py`, the token warm start `model.py`, `train.py`'s
+  unknown arguments, the stored configs' `target:` strings).
+
+**Result:** (2026-10-12) Checks on `852a0eb`: the gates, subset20, IDENTICAL on sp4090 (paper and
+release, 120 of 120 views each); the amend to `059f249` changes docs and comments only. Tests 23 of
+23. The README's facts against the code: the conv_in order (`modules.py:969-1006`), the emission token's
+warm start (`model.py:451-462`), `train.py` dropping unknown arguments (`:174`) and naming the logdir
+(`:187`), the stored configs' `target:` strings, pytorch-lightning's save-then-validate order
+(`training_epoch_loop.py:229, 250`). Codex's doc review (5 findings), all fixed: `submit_release.sh`
+aborts from this branch until step 15 points the launchers at `release` (now in `CLAUDE.md` and in
+step 15's list, with their loader imports); the release body's node-local `HF_MODULES_CACHE` is
+shared by the node's ranks (a cache per process is the complete fix); the `run_checks.py` path is
+from the fork root; the data checks cover the shapes in the three lists, not every shape; the first
+checkpoint, before any validation, is not ranked. PASS.
 
 ### 15. Branch `release` (per D11) and the rename to `Hunyuan3D-Emission/` (per D4) (needs Dongchen's review of the branch, then his go)
 
@@ -765,6 +801,13 @@ before his review (Dongchen 2026-10-11).
   from its new path, as TEXGen-Emission's `run_texgen_infer.py` does; `test_predict_ref_source.py:14`
   moves too. Smoke: the paper and release checkpoints through the converted path, 2 shapes each,
   against their 4090 baselines.
+- [ ] The release launchers follow (found 2026-10-12, Codex's review of step 14): they check out and
+  require branch `lightgen` (`submit_release.sh:94`, `train_release_body.sh:24,86`,
+  `stage_alliance.sh:4`), whose tree keeps them under `scripts/lightgen/`, so this branch's copy
+  aborts at `[ -f "$BODY" ]`; and their loader preflights import the re-export
+  (`stage_alliance.sh:117`, `train_release_body.sh:125`). Point them at `release` and
+  `objaverse_loader_forTexturePBR.TextureDataset` together with the re-export deletion; the
+  `.commit` pinning keeps past campaigns on `lightgen`.
 - [ ] In the parent, one commit: the gitlink bump, `.gitmodules` `branch = release`, and the rename
   per D4 (`git mv Hunyuan3DPaint-emissive Hunyuan3D-Emission`, the submodule's name stays, then
   `git -C Hunyuan3D-Emission worktree repair`; every parent reference: search again; on 2026-10-06 the predictor's default root `:70`,

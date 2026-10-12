@@ -54,9 +54,9 @@ class HunyuanPaint(pl.LightningModule):
     roughness latents are channel-concatenated onto the geometry conditioning (normal +
     CCM) -- the exact mechanism upstream uses for geometry -- and the denoised/supervised
     output is the emission multiview alone (pbr_settings=["emission"], learned token
-    warm-started from the pretrained albedo token). Single reference (frontal albedo
-    render); upstream's dual-ref consistency loss dropped. No teacher-forcing, no
-    per-slot timestep mixing.
+    warm-started from the pretrained albedo token). Single reference image (the frontal
+    albedo render or the TexVerse thumbnail: the loader's `ref_source`); upstream's dual-ref
+    consistency loss dropped. No teacher-forcing, no per-slot timestep mixing.
 
     Three mechanics in here are non-obvious and are the reason this file exists at all:
 

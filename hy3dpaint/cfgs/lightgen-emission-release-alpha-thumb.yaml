@@ -133,14 +133,14 @@ lightning:
     # the same thing here, unlike the venus config where accumulate 2 made validation run at
     # half the checkpoint interval.
     #
-    # KEPT EQUAL TO every_n_train_steps ON PURPOSE. It is tempting to checkpoint often (crash
-    # safety) while validating rarely (cost), but that quietly corrupts checkpoint SELECTION:
-    # `val/emission_mse` persists in `callback_metrics` between validations, so a checkpoint
-    # written at a non-validation step is ranked with the PREVIOUS validation's score and can
-    # take a top_k slot it did not earn. (It does not crash --
-    # ModelCheckpoint._save_topk_checkpoint only raises MisconfigurationException when the key
-    # is absent entirely AND the val loop has already run, which a stale-but-present value
-    # avoids. Verified against the installed pytorch_lightning 1.9.5 source.)
+    # Equal to every_n_train_steps, which ranks each checkpoint by the PREVIOUS validation:
+    # ModelCheckpoint saves in on_train_batch_end, and the validation of the same step runs after
+    # it (pytorch_lightning 1.9.5, training_epoch_loop.py), so the checkpoint at step N carries
+    # `val/emission_mse` from step N - 1250 (the first, at 1250, has none and is not ranked;
+    # num_sanity_val_steps is 0). The paper and release runs trained so; the trough
+    # checkpoints, not the top 3, are the ones to choose from (above), and val/emission_mse is too
+    # noisy to choose on anyway. Validating at half the checkpoint interval would rank each
+    # checkpoint by a validation half an interval old.
     #
     # 1250 gives 40 validations over the 50k-step campaign -- the same number the venus run
     # did, so validation overhead is a known quantity rather than a new variable.

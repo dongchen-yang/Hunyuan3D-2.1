@@ -1,151 +1,164 @@
+# Hunyuan3D-Paint for emission maps
 
-<p align="center">
-  <img src="assets/images/teaser.jpg">
-</p>
+This repository adapts the multiview texture model of **Hunyuan3D 2.1** (Hunyuan3D-Paint) from PBR
+materials to **emission**. Given six views of a mesh's ground-truth PBR materials and geometry, and an
+image of the object, it generates the emission of the same six views; projecting them onto the mesh's
+UV map is a separate step. It is the Hunyuan3D baseline of LightgenBench
+([Hugging Face `3dlg-hcvc/LightgenBench`](https://huggingface.co/datasets/3dlg-hcvc/LightgenBench)).
 
+Hunyuan3D 2.1 and most of this code are the work of the Tencent Hunyuan3D team:
 
-<div align="center">
-  <a href=https://3d.hunyuan.tencent.com target="_blank"><img src=https://img.shields.io/badge/Official%20Site-333399.svg?logo=homepage height=22px></a>
-  <a href=https://huggingface.co/spaces/tencent/Hunyuan3D-2.1  target="_blank"><img src=https://img.shields.io/badge/%F0%9F%A4%97%20Demo-276cb4.svg height=22px></a>
-  <a href=https://huggingface.co/tencent/Hunyuan3D-2.1 target="_blank"><img src=https://img.shields.io/badge/%F0%9F%A4%97%20Models-d96902.svg height=22px></a>
-  <a href=https://3d-models.hunyuan.tencent.com/ target="_blank"><img src= https://img.shields.io/badge/Page-bb8a2e.svg?logo=github height=22px></a>
-  <a href=https://discord.gg/dNBrdrGGMa target="_blank"><img src= https://img.shields.io/badge/Discord-white.svg?logo=discord height=22px></a>
-  <a href=https://arxiv.org/pdf/2506.15442 target="_blank"><img src=https://img.shields.io/badge/Report-b5212f.svg?logo=arxiv height=22px></a>
-  <a href=https://x.com/TencentHunyuan target="_blank"><img src=https://img.shields.io/badge/Hunyuan-black.svg?logo=x height=22px></a>
- <a href="#community-resources" target="_blank"><img src=https://img.shields.io/badge/Community-lavender.svg?logo=homeassistantcommunitystore height=22px></a>
-</div>
+> **Hunyuan3D 2.1: From Images to High-Fidelity 3D Assets with Production-Ready PBR Material.**
+> Tencent Hunyuan3D Team, 2025. [Report](https://arxiv.org/abs/2506.15442) ·
+> [Code](https://github.com/Tencent-Hunyuan/Hunyuan3D-2.1) ·
+> [Models](https://huggingface.co/tencent/Hunyuan3D-2.1)
 
-[//]: # (  <a href=# target="_blank"><img src=https://img.shields.io/badge/Report-b5212f.svg?logo=arxiv height=22px></a>)
+The code and weights are under the Tencent Hunyuan 3D Community License (`LICENSE`, `Notice.txt`). If
+you use this code, please cite Hunyuan3D ([below](#citation)). Upstream's own README, for its shape
+model, texture demo, Gradio app and API (all kept here, unchanged), is
+[`README_hunyuan3d.md`](README_hunyuan3d.md).
 
-[//]: # (  <a href=# target="_blank"><img src= https://img.shields.io/badge/Colab-8f2628.svg?logo=googlecolab height=22px></a>)
+## What differs from Hunyuan3D-Paint 2.1
 
-[//]: # (  <a href="#"><img alt="PyPI - Downloads" src="https://img.shields.io/pypi/v/mulankit?logo=pypi"  height=22px></a>)
-<br>
+- **Input.** Upstream's UNet takes the noisy latent with the normal and position maps' latents (12
+  channels). Here the ground-truth albedo, metallic-roughness and alpha (glTF opacity) views are
+  encoded the same way and appended: `[noisy 0-3 | normal 4-7 | position 8-11 | albedo 12-15 |
+  metallic-roughness 16-19 | alpha 20-23]`. `train.py` widens the pretrained `conv_in` to 24 channels,
+  zero-initializing the new ones.
+- **Output.** One generation stream, the emission, instead of upstream's two (albedo,
+  metallic-roughness). Its learned token and its attention weights start from upstream's albedo
+  stream. The model is `HunyuanPaint` in `hy3dpaint/hunyuanpaintpbr/unet/model.py`; its docstring
+  explains the mechanics (the UNet rebuilt from this package after the pipeline loads, the one
+  material slot, the frozen leftover parameters).
+- **Reference image.** The object's thumbnail (the TexVerse preview image shipped with LightgenBench),
+  through upstream's reference path and its augmentation during training.
+- **Sampling.** The model's `validation_step`: 30 Euler-ancestral steps, no classifier-free guidance.
+  Upstream's `HunyuanPaintPipeline.__call__` does not sample this model.
+- **Data.** The loader (`TextureDataset` in `hy3dpaint/src/data/dataloader/objaverse_loader_forTexturePBR.py`)
+  reads six fixed views per shape. Upstream's PBR training path does not run in this repository.
 
-## 🔥 News
-
-- Jul 26, 2025: 🤗 We release the first open-source, simulation-capable, immersive 3D world generation model, [HunyuanWorld-1.0](https://github.com/Tencent-Hunyuan/HunyuanWorld-1.0)!
-- Jun 19, 2025: 👋 We present the [technical report](https://arxiv.org/pdf/2506.15442) of Hunyuan3D-2.1, please check out the details and spark some discussion!
-- Jun 13, 2025: 🤗 We release the first production-ready 3D asset generation model, Hunyuan3D-2.1!
-
-> Join our **[Wechat](#)** and **[Discord](https://discord.gg/dNBrdrGGMa)** group to discuss and find help from us.
-
-| Wechat Group                                     | Xiaohongshu                                           | X                                           | Discord                                           |
-|--------------------------------------------------|-------------------------------------------------------|---------------------------------------------|---------------------------------------------------|
-| <img src="assets/qrcode/wechat.png"  height=140> | <img src="assets/qrcode/xiaohongshu.png"  height=140> | <img src="assets/qrcode/x.png"  height=140> | <img src="assets/qrcode/discord.png"  height=140> |        
-
-## 🤗 Community Contribution Leaderboard
-1. By [@visualbruno](https://github.com/visualbruno)
-  - ComfyUI-Hunyuan3d-2-1: https://github.com/visualbruno/ComfyUI-Hunyuan3d-2-1
-2. By [@VR-Jobs](https://github.com/VR-Jobs)
-  - Hunyuan3d-2-1 Unity Support: https://github.com/VR-Jobs/Hunyuan3D-2.1-Unity-XR-PC-Phone
-
-## ☯️ **Hunyuan3D 2.1**
-
-### Architecture
-
-Tencent Hunyuan3D-2.1 is a scalable 3D asset creation system that advances state-of-the-art 3D generation through two pivotal innovations: Fully Open-Source Framework and  Physically-Based Rendering (PBR) Texture Synthesis. For the first time, the system releases full model weights and training code, enabling community developers to directly fine-tune and extend the model for diverse downstream applications. This transparency accelerates academic research and industrial deployment. Moreover, replacing the prior RGB-based texture model, the upgraded PBR pipeline leverages  physics-grounded material simulation  to generate textures with photorealistic light interaction (e.g., metallic reflections, subsurface scattering).
-
-<p align="left">
-  <img src="assets/images/pipeline.png">
-</p>
-
-### Performance
-
-We have evaluated Hunyuan3D 2.1 with other open-source as well as close-source 3d-generation methods.
-The numerical results indicate that Hunyuan3D 2.1 surpasses all baselines in the quality of generated textured 3D assets
-and the condition following ability.
-
-| Model                   | ULIP-T(⬆)   | ULIP-I(⬆) | Uni3D-T(⬆)      | Uni3D-I(⬆) |
-|-------------------------|-----------|-------------|-------------|---------------|
-| Michelangelo  | 0.0752     | 0.1152      | 0.2133     | 0.2611         |
-| Craftsman | 0.0745     | 0.1296      | 0.2375     | 0.2987         |
-| TripoSG | 0.0767     | 0.1225      | 0.2506     | 0.3129       |
-| Step1X-3D | 0.0735     | 0.1183      | 0.2554     | 0.3195         |
-| Trellis | 0.0769     | 0.1267      | 0.2496     | 0.3116         |
-| Direct3D-S2 | 0.0706     | 0.1134      | 0.2346     | 0.2930         |
-| Hunyuan3D-Shape-2.1           | **0.0774** | **0.1395**  | **0.2556** | **0.3213** |
-
-
-| Model                   | CLIP-FiD(⬇)   | CMMD(⬇) | CLIP-I(⬆)      | LPIPS(⬇) |
-|-------------------------|-----------|-------------|-------------|---------------|
-| SyncMVD-IPA  | 28.39     | 2.397      | 0.8823     | 0.1423         |
-| TexGen | 28.24     | 2.448      | 0.8818     | 0.1331         |
-| Hunyuan3D-2.0 | 26.44     | 2.318     | 0.8893     | 0.1261         |
-| Hunyuan3D-Paint-2.1           | **24.78** | **2.191**  | **0.9207** | **0.1211**     |
-
-
-
-## 🎁 Models Zoo
-
-It takes 10 GB VRAM for shape generation, 21GB for texture generation and 29GB for shape and texture generation in total.
-
-
-| Model                      | Description                 | Date       | Size | Huggingface                                                                               |
-|----------------------------|-----------------------------|------------|------|-------------------------------------------------------------------------------------------| 
-| Hunyuan3D-Shape-v2-1         | Image to Shape Model        | 2025-06-14 | 3.3B | [Download](https://huggingface.co/tencent/Hunyuan3D-2.1/tree/main/hunyuan3d-dit-v2-1)         |
-| Hunyuan3D-Paint-v2-1       | Texture Generation Model    | 2025-06-14 | 2B | [Download](https://huggingface.co/tencent/Hunyuan3D-2.1/tree/main/hunyuan3d-paintpbr-v2-1)       |
-
-
-## 🤗 Get Started with Hunyuan3D 2.1
-
-Hunyuan3D 2.1 supports Macos, Windows, Linux. You may follow the next steps to use Hunyuan3D 2.1 via:
-
-### Install Requirements
-We test our model with Python 3.10 and PyTorch 2.5.1+cu124.
-```bash
-pip install torch==2.5.1 torchvision==0.20.1 torchaudio==2.5.1 --index-url https://download.pytorch.org/whl/cu124
-pip install -r requirements.txt
-
-cd hy3dpaint/custom_rasterizer
-pip install -e .
-cd ../..
-cd hy3dpaint/DifferentiableRenderer
-bash compile_mesh_painter.sh
-cd ../..
-
-wget https://github.com/xinntao/Real-ESRGAN/releases/download/v0.1.0/RealESRGAN_x4plus.pth -P hy3dpaint/ckpt
-```
-
-### Code Usage
-
-We designed a diffusers-like API to use our shape generation model - Hunyuan3D-Shape and texture synthesis model -
-Hunyuan3D-Paint.
-
-```python
-import sys
-sys.path.insert(0, './hy3dshape')
-sys.path.insert(0, './hy3dpaint')
-from textureGenPipeline import Hunyuan3DPaintPipeline
-from textureGenPipeline import Hunyuan3DPaintPipeline, Hunyuan3DPaintConfig
-from hy3dshape.pipelines import Hunyuan3DDiTFlowMatchingPipeline
-
-# let's generate a mesh first
-shape_pipeline = Hunyuan3DDiTFlowMatchingPipeline.from_pretrained('tencent/Hunyuan3D-2.1')
-mesh_untextured = shape_pipeline(image='assets/demo.png')[0]
-
-paint_pipeline = Hunyuan3DPaintPipeline(Hunyuan3DPaintConfig(max_num_view=6, resolution=512))
-mesh_textured = paint_pipeline(mesh_path, image_path='assets/demo.png')
-```
-
-
-### Gradio App
-
-You could also host a [Gradio](https://www.gradio.app/) App in your own computer via:
-
+The upstream files we changed are edited in place; `main` is upstream's code, so
 
 ```bash
-python3 gradio_app.py \
-  --model_path tencent/Hunyuan3D-2.1 \
-  --subfolder hunyuan3d-dit-v2-1 \
-  --texgen_model_path tencent/Hunyuan3D-2.1 \
-  --low_vram_mode
+git fetch origin main && git diff origin/main -- hy3dpaint/
 ```
 
+shows every change.
 
-## 🔗 BibTeX
+## Setup
 
-If you found this repository helpful, please cite our reports:
+```bash
+conda create -n hunyuanpaint python=3.10 -y && conda activate hunyuanpaint
+pip install -r requirements-emission.txt --extra-index-url https://download.pytorch.org/whl/cu128
+```
+
+`requirements-emission.txt` lists what training and inference import, at the versions that produced
+our results: torch 2.11 + CUDA 12.8 (RTX 4090, L40S, A40, H100, RTX PRO 6000), diffusers 0.30.0 and
+pytorch-lightning 1.9.5 (the checkpoint format). Upstream's `requirements.txt` covers its demo and app.
+
+The model starts from Hunyuan3D-2.1's paint weights at the revision every run used, and loads
+`facebook/dinov2-giant` for the reference image:
+
+```bash
+huggingface-cli download tencent/Hunyuan3D-2.1 --revision 0b94677654c57bb9a6b6845cd7b704ccf551d327 \
+    --include "hunyuan3d-paintpbr-v2-1/*"
+huggingface-cli download facebook/dinov2-giant
+```
+
+On a machine without internet, set `HF_HUB_OFFLINE=1` after these downloads. Run every command
+below from `hy3dpaint/`.
+
+## Data
+
+LightgenBench is gated: accept its terms on the dataset page, then log in (`huggingface-cli login`).
+
+```bash
+huggingface-cli download 3dlg-hcvc/LightgenBench --repo-type dataset --local-dir <download_dir> \
+    --include "splits.json" "checksums.sha256" "data/*/multiview/*.tar" "data/*/thumbnail/*.tar"
+bash scripts/lightgenbench/unpack_hf_dataset.sh <download_dir> <data_dir>
+```
+
+The script checks every tar against `checksums.sha256` and unpacks the views and thumbnails into
+`<data_dir>/shapes/<uuid>/` (`render_tex/` holds each view's albedo, metallic-roughness, alpha,
+normal, position and emission maps) and `<data_dir>/thumbs/<uuid>.png`. It writes the example lists
+from `splits.json`, checking that the splits are disjoint and that every shape in them has its files
+on disk:
+`release_train.json` (36,426 shapes), `release_val64.json` (the 64 validation shapes training
+validates on) and `release_test.json` (200). Last, it writes the training config
+`<data_dir>/lightgen-emission-release-alpha-thumb.yaml`: `cfgs/lightgen-emission-release-alpha-thumb.yaml`
+with the weights, the data and the data-loader workers filled in (`SNAPSHOT=<dir>` and
+`NUM_WORKERS=<n>` override the defaults). That is about 37 GB to download and 40 GB unpacked.
+
+## Training
+
+```bash
+WANDB_MODE=offline python train.py --base <data_dir>/lightgen-emission-release-alpha-thumb.yaml \
+    --name release --logdir logs/ --gpus 0,1,2,3
+```
+
+This is the recipe of our release run: 4 GPUs × batch 4 = global batch 16, learning rate 7e-5, 50,000
+steps, bf16, gradient checkpointing. The learning rate restarts every 10,000 steps (1,000 warm-up +
+9,000 cosine, each cycle's peak 0.9 times the last). On 4 × H100 80 GB a step took 3.4–3.8 s, about
+two days in all; a 24 GB GPU cannot train this model. Training logs to Weights & Biases (project
+`LightGen`; log in instead of `WANDB_MODE=offline` to log online).
+
+Outputs go to `logs/lightgen-emission-release-alpha-thumb-release/`: the config as run
+(`configs/project.yaml`) and, in `checkpoints/`, `last.ckpt`, the three best by `val/emission_mse`,
+and `troughs/trough-step=000N0000.ckpt` at the end of each learning-rate cycle (17.9 GB each). The
+same command resumes from `last.ckpt`. `train.py` takes no `key=value` overrides (it ignores them):
+to change the recipe, edit the config. With fewer GPUs, keep the global batch at 16 with
+`lightning.trainer.accumulate_grad_batches`, and multiply `val_check_interval` by the same factor: it
+counts batches, while `max_steps` and the checkpoint interval count optimizer steps.
+
+Choose among the trough checkpoints with your own metric on the validation split; do not trust
+`val/emission_mse` or the three "best" checkpoints. Validation samples 64 shapes once each, so the
+value is noisy, and from the second checkpoint on each is ranked by the validation one interval
+earlier (the checkpoint callback runs before the validation of the same step; the first checkpoint
+comes before any validation). We chose step 40,000 by the point-sampled emission IoU on the 200
+validation shapes.
+
+## Inference on the test split
+
+```bash
+python predict_emission_views.py \
+    --config logs/lightgen-emission-release-alpha-thumb-release/configs/project.yaml \
+    --ckpt logs/lightgen-emission-release-alpha-thumb-release/checkpoints/troughs/trough-step=00040000.ckpt \
+    --examples_json <data_dir>/release_test.json --thumbnail_dir <data_dir>/thumbs --out <out_dir>
+```
+
+This writes `<out_dir>/<uuid>/seed00/00{0..5}_emission.png`, the six predicted views (512 × 512, in the
+camera order of the shape's `render_tex/`), and `<out_dir>/manifest.json`. `--seeds N` samples N seeds
+per shape. Each shape's noise comes from its uuid and the seed index, not from its place in the list;
+on one GPU type a rerun writes the same bytes, and another GPU type differs slightly (a mean of 0.1/255
+between an RTX 4090 and an RTX PRO 6000). A 24 GB GPU is enough, at about 4 s per shape on an RTX
+4090. Projecting the views onto the UV map and the benchmark's scoring are not part of this
+repository.
+
+## Tests
+
+```bash
+python -m pytest scripts/lightgen/ -q
+```
+
+The loader, the example-list builder, the release re-layout and the inference script's seed and
+reference-image rules (CPU only).
+
+## Repository
+
+| path (under `hy3dpaint/`) | contents |
+|---|---|
+| `train.py`, `predict_emission_views.py` | training; inference on chosen shapes |
+| `hunyuanpaintpbr/` | the model (`unet/model.py`) and the UNet (`unet/modules.py`), upstream's files edited in place |
+| `src/data/dataloader/objaverse_loader_forTexturePBR.py` | the loader, upstream's file with our class |
+| `cfgs/` | the release config template; the paper run's config (`-fir-xg`) |
+| `scripts/lightgenbench/` | `unpack_hf_dataset.sh`: the Hugging Face dataset to the data folder and config |
+| `scripts/lightgen/` | what the data script runs (re-layout, example lists) and the tests |
+| `scripts/internal/` | our cluster launchers and regression checks; not needed to use the code |
+
+Upstream's shape model (`hy3dshape/`), texture demo (`demo.py`, `textureGenPipeline.py`), Gradio app
+and API are unchanged.
+
+## Citation
 
 ```bibtex
 @misc{hunyuan3d2025hunyuan3d,
@@ -165,29 +178,4 @@ If you found this repository helpful, please cite our reports:
     archivePrefix={arXiv},
     primaryClass={cs.CV}
 }
-
-@misc{yang2024hunyuan3d,
-    title={Hunyuan3D 1.0: A Unified Framework for Text-to-3D and Image-to-3D Generation},
-    author={Tencent Hunyuan3D Team},
-    year={2024},
-    eprint={2411.02293},
-    archivePrefix={arXiv},
-    primaryClass={cs.CV}
-}
 ```
-
-## Acknowledgements
-
-We would like to thank the contributors to
-the [TripoSG](https://github.com/VAST-AI-Research/TripoSG), [Trellis](https://github.com/microsoft/TRELLIS),  [DINOv2](https://github.com/facebookresearch/dinov2), [Stable Diffusion](https://github.com/Stability-AI/stablediffusion), [FLUX](https://github.com/black-forest-labs/flux), [diffusers](https://github.com/huggingface/diffusers), [HuggingFace](https://huggingface.co), [CraftsMan3D](https://github.com/wyysf-98/CraftsMan3D), [Michelangelo](https://github.com/NeuralCarver/Michelangelo/tree/main), [Hunyuan-DiT](https://github.com/Tencent-Hunyuan/HunyuanDiT), and [HunyuanVideo](https://github.com/Tencent-Hunyuan/HunyuanVideo) repositories, for their open research and
-exploration.
-
-## Star History
-
-<a href="https://star-history.com/#Tencent-Hunyuan/Hunyuan3D-2.1&Date">
- <picture>
-   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/svg?repos=Tencent-Hunyuan/Hunyuan3D-2.1&type=Date&theme=dark" />
-   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/svg?repos=Tencent-Hunyuan/Hunyuan3D-2.1&type=Date" />
-   <img alt="Star History Chart" src="https://api.star-history.com/svg?repos=Tencent-Hunyuan/Hunyuan3D-2.1&type=Date" />
- </picture>
-</a>
