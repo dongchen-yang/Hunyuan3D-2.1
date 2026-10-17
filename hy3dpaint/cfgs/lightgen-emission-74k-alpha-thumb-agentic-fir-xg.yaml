@@ -51,7 +51,7 @@
 
 model:
   base_learning_rate: 7.0e-05
-  target: hunyuanpaintpbr.model_emission.HunyuanPaintEmission
+  target: hunyuanpaintpbr.unet.model.HunyuanPaint
   params:
     num_view: 6
     view_size: 512
@@ -82,7 +82,7 @@ data:
     num_workers: 10
     train:
       -
-        target: src.data.dataloader.lightgen_emission_loader.LightgenEmissionDataset
+        target: src.data.dataloader.objaverse_loader_forTexturePBR.TextureDataset
         params:
           num_view: 6
           use_alpha: true
@@ -106,7 +106,7 @@ data:
           json_path: /scratch/xya120/lightgen_mvpaint/mv74k_train_agentic.json
     validation:
       -
-        target: src.data.dataloader.lightgen_emission_loader.LightgenEmissionDataset
+        target: src.data.dataloader.objaverse_loader_forTexturePBR.TextureDataset
         params:
           num_view: 6
           use_alpha: true

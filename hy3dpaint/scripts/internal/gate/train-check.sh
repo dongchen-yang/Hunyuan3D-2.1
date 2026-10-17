@@ -64,6 +64,11 @@ sed -e "s|__SNAPSHOT__|$SNAP|" -e "s|__THUMBS__|$ROOT/thumbs|" -e "s|__TRAIN_JSO
     -e "s|__VAL_JSON__|$OUT/val.json|" -e "s|__SAVE_EVERY__|$SAVE|" -e "s|__MAX_STEPS__|$MAX|" \
     "$HERE/traincheck/traincheck.yaml" > "$OUT/traincheck.yaml"
 grep -qE '__(SNAPSHOT|THUMBS|TRAIN_JSON|VAL_JSON|SAVE_EVERY|MAX_STEPS)__' "$OUT/traincheck.yaml" && { echo "ABORT: an unfilled token in $OUT/traincheck.yaml"; exit 2; }
+# traincheck.yaml names the class paths of tag pre-refactor; a tree that ships the converter (step 14b on)
+# gets its config converted, an older tree reads it as is.
+if [ -f "$TREE/hy3dpaint/scripts/convert_config.py" ]; then
+  python "$TREE/hy3dpaint/scripts/convert_config.py" "$OUT/traincheck.yaml" "$OUT/traincheck.yaml"
+fi
 
 # Lightning writes a checkpoint through a temp file in $TMPDIR; the dataloader worker puts a socket
 # there, so the path stays short.

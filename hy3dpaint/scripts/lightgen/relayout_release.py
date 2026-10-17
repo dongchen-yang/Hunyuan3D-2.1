@@ -5,7 +5,7 @@ The released dataset (Hugging Face 3dlg-hcvc/LightgenBench) ships one directory 
     <root>/<uuid>/multiview/00N_{albedo,mr,normal,pos,emission,alpha}.png + transforms.json
     <root>/<uuid>/thumbnail.png
 
-`LightgenEmissionDataset` and `make_74k_jsons.py` were written against the render fixture:
+The loader (`TextureDataset`) and `make_74k_jsons.py` were written against the render fixture:
 
     <root>/<sha>/render_tex/<the same 37 files>
     <root>/<sha>/render_cond/000.png

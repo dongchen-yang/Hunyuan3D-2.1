@@ -53,3 +53,15 @@ def test_split_panel_returns_the_predictions_in_camera_order():
     both = torch.cat([gt, pred], dim=-2)
     panel = both.reshape(b, n, c, 2 * h, w).permute(0, 2, 3, 1, 4).reshape(b, c, 2 * h, n * w)
     assert torch.equal(pev._split_panel(panel, n), pred.reshape(b, n, c, h, w))
+
+
+def test_load_config_converts_the_old_class_paths(tmp_path):
+    old = tmp_path / "config.yaml"
+    old.write_text("model:\n  target: hunyuanpaintpbr.model_emission.HunyuanPaintEmission\n"
+                   "data:\n  params:\n    train:\n"
+                   "      - target: src.data.dataloader.lightgen_emission_loader.LightgenEmissionDataset\n"
+                   "        params: {ref_source: thumbnail}\n")
+    cfg = pev.load_config(str(old))
+    assert cfg.model.target == "hunyuanpaintpbr.unet.model.HunyuanPaint"
+    assert cfg.data.params.train[0].target == "src.data.dataloader.objaverse_loader_forTexturePBR.TextureDataset"
+    assert cfg.data.params.train[0].params.ref_source == "thumbnail"

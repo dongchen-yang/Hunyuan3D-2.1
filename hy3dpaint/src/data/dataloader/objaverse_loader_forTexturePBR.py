@@ -42,8 +42,8 @@ MAX_FAILED_INDICES = 3
 
 class TextureDataset(BaseDataset):
     """Fixed-6-view loader for the LightGen multiview emission fixtures (lightgen: our loader replaces
-    upstream's TextureDataset in place; `lightgen_emission_loader.LightgenEmissionDataset`, the class
-    path stored configs name, is this class).
+    upstream's TextureDataset in place; configs from before the refactor name it
+    `lightgen_emission_loader.LightgenEmissionDataset`, which scripts/convert_config.py maps here).
 
     Differences from upstream's TextureDataset: no lighting-suffix logic, no random
     view subsampling (views are the canonical 000-005), adds images_emission and
@@ -193,7 +193,7 @@ class TextureDataset(BaseDataset):
                 failed.append((d, repr(e)))
                 if d not in _REPORTED_BAD:
                     _REPORTED_BAD.add(d)
-                    print(f"[LightgenEmissionDataset] UNREADABLE example idx={idx} dir={d}: {e!r} "
+                    print(f"[TextureDataset] UNREADABLE example idx={idx} dir={d}: {e!r} "
                           f"-- substituting a random other example", file=sys.stderr, flush=True)
                 if len(failed) >= MAX_FAILED_INDICES:
                     raise RuntimeError(

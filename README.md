@@ -134,14 +134,19 @@ between an RTX 4090 and an RTX PRO 6000). A 24 GB GPU is enough, at about 4 s pe
 4090. Projecting the views onto the UV map and the benchmark's scoring are not part of this
 repository.
 
+A config written by this code before its October 2026 refactor (such as our runs') names older class
+paths. `predict_emission_views.py` converts it on load; to train from one, convert it first with
+`python scripts/convert_config.py <old.yaml> <new.yaml>`. Our checkpoints need no conversion (they hold
+weights and optimizer state, no class of this code); `scripts/convert_config.py --ckpt` checks one.
+
 ## Tests
 
 ```bash
 python -m pytest scripts/lightgen/ -q
 ```
 
-The loader, the example-list builder, the release re-layout and the inference script's seed and
-reference-image rules (CPU only).
+The loader, the example-list builder, the release re-layout, the inference script's seed and
+reference-image rules, and the config and checkpoint conversion (CPU only).
 
 ## Repository
 
@@ -152,6 +157,7 @@ reference-image rules (CPU only).
 | `src/data/dataloader/objaverse_loader_forTexturePBR.py` | the loader, upstream's file with our class |
 | `cfgs/` | the release config template; the paper run's config (`-fir-xg`) |
 | `scripts/lightgenbench/` | `unpack_hf_dataset.sh`: the Hugging Face dataset to the data folder and config |
+| `scripts/convert_config.py` | configs and checkpoints from the code before its refactor to the current names |
 | `scripts/lightgen/` | what the data script runs (re-layout, example lists) and the tests |
 | `scripts/internal/` | our cluster launchers and regression checks; not needed to use the code |
 

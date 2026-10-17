@@ -122,7 +122,7 @@ fi
 python - <<'PYCHK' || { echo "ABORT: the training env cannot import the loader (traceback above)."; exit 2; }
 import sys
 sys.path.insert(0, ".")
-from src.data.dataloader.lightgen_emission_loader import LightgenEmissionDataset as D
+from src.data.dataloader.objaverse_loader_forTexturePBR import TextureDataset as D
 assert D.REF_SOURCES == ("frontal_albedo", "thumbnail"), D.REF_SOURCES
 import cv2, numpy as np, torch
 cv2.getPerspectiveTransform(np.float32([[0,0],[8,0],[8,8],[0,8]]),

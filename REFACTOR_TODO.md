@@ -29,6 +29,7 @@ same for `plans/2026-09-16-hunyuan3d-paint-refactor.md`); use them as a source o
 - [x] 12. Environment files
 - [x] 13. Release layer: generic entry points for LightgenBench users (per D15)
 - [x] 14. Docs
+- [x] 14b. The old class paths go; one converter for configs and checkpoints (Dongchen 2026-10-17, at review)
 - [ ] 15. Branch `release` (per D11) and the rename to `Hunyuan3D-Emission/` (per D4) (needs Dongchen's review of the branch, then his go)
 - [ ] 16. Cut-over (per D8)
 - [ ] 17. Release cut: our internal files leave the published tree (per D10)
@@ -152,10 +153,15 @@ bash $G/train-check.sh <tree> <out> fresh|resume                # one training c
   deadline and canceled if not running after 2 min. Gate shapes are split over the slots by speed. A
   type judges a gate once it has 2 byte-identical full runs of `pre-refactor`
   (`--record_baseline`, which compares each new run with the first), or 4 runs as an envelope.
-  Training checks run on a type with training baselines, so far the Blackwell SE (training needs
-  >= 48 GB; a 4090 cannot train this model). Baselines and envelopes per type: `baselines.json`.
+  Training checks run on a type of >= 48 GB (the two Blackwell types; a 4090 cannot train this model)
+  with training baselines under the same rule, recorded the same way (`--record_baseline --checks
+  fresh,resume`). Baselines and envelopes per type: `baselines.json`. Every call to star2 shares one
+  ssh connection and is retried when ssh fails: on 2026-10-17 two dozen threads logging in at once hit
+  star2's limit on new connections, and a failed `squeue` read as a finished job.
   `--entry fork` runs the gates with the tree's own
-  `hy3dpaint/predict_emission_views.py` (step 13) instead of the frozen parent predictor.
+  `hy3dpaint/predict_emission_views.py` (step 13) instead of the frozen parent predictor, and passes
+  only when IDENTICAL; the default, `--entry auto`, picks it for a tree without the old loader module
+  the parent predictor imports (step 14b on).
 - Routine steps: subset20 (about 2 min on the 4090 plus the model load). Full (`--full`): 204 and 200
   shapes, about 15 min each, for steps that touch the model, the loader, `train.py` or the configs,
   and before step 15.
@@ -184,12 +190,14 @@ bash $G/train-check.sh <tree> <out> fresh|resume                # one training c
    `src.data.dataloader.lightgen_emission_loader.LightgenEmissionDataset`, `train.SetupCallback`,
    `train.CodeSnapshot`; and `src.utils.train_util.instantiate_from_config` (predictor `:181`). The
    predictor also imports the loader by module path (`:356`). After the fold (D13) our two modules
-   stay as one-line re-exports until step 15; from then on `scripts/convert_config.py` maps the old
-   paths in stored configs.
+   stayed as one-line re-exports; step 14b deleted them, and `scripts/convert_config.py` maps the old
+   paths (the fork's predictor and the training check convert on load). The parent predictor's import
+   moves at step 15.
 3. Config files named from outside: `cfgs/lightgen-emission-74k-alpha-thumb-agentic-fir-xg.yaml`
    (`job_hunyuan.sh:20`, `hunyuan_worker.sbatch:104`, `stage_hunyuan_host.sh:146`,
    `../evaluation/render_emissive/out_blocked_case/02fcc43854994fb0b4c5b4bd847fbd3a/scripts/run_xg.sh:6`)
-   and `cfgs/lightgen-emission-release-alpha-thumb.yaml` (the release launchers). Keys read from
+   and `cfgs/lightgen-emission-release-alpha-thumb.yaml` (the release launchers); since step 14b the
+   `-fir-xg` file equals the run's `config.yaml` after `convert_config.py`. Keys read from
    outside: `data.params.train[0].params.ref_source` (predictor `:91-92`),
    `model.params.{noise_in_channels, gradient_checkpointing, stable_diffusion_config.pretrained_model_name_or_path}`.
    Every key of the stored configs stays accepted.
@@ -302,7 +310,9 @@ Decided by Dongchen on 2026-10-10:
   deleted, and a `scripts/convert_config.py` maps the old class paths in stored configs (no checkpoint
   needs converting: none pickles a class of ours). With the fold, upstream's own two-slot PBR training
   path no longer exists in the fork (its config already fails to import on `main`); the kept demo
-  stack uses neither class.
+  stack uses neither class. Dongchen 2026-10-17, at review: no aliases; the re-exports and the
+  converter moved up to step 14b, with every conversion in that one file; the parent's move stays at
+  step 15.
 - D14 Keep only the release launchers and config (`submit_release.sh`, `train_release_body.sh`,
   `stage_alliance.sh`, the release config template) and the paper run's inference config
   `-fir-xg.yaml` (four parent scripts name it; it equals the run's jupiter `config.yaml`); delete the
@@ -787,6 +797,62 @@ shared by the node's ranks (a cache per process is the complete fix); the `run_c
 from the fork root; the data checks cover the shapes in the three lists, not every shape; the first
 checkpoint, before any validation, is not ranked. PASS.
 
+### 14b. The old class paths go; one converter for configs and checkpoints (Dongchen 2026-10-17, at review)
+
+Dongchen at review: no aliases such as `lightgen_emission_loader`; if that affects checkpoint loading,
+a conversion script first, one file for every such conversion. Checkpoints are not affected (they
+pickle `collections.OrderedDict` and torch storages only, checked on both scored checkpoints); configs
+are: the two runs' stored configs, the `-fir-xg` copy and the training check's name the old modules.
+
+- [x] `hy3dpaint/scripts/convert_config.py`, as TEXGen-Emission's: `<old.yaml> <new.yaml>` rewrites
+  only the `target:` lines naming the two old paths and keeps every other byte; `--ckpt <old> <new>`
+  rewrites the class references of a checkpoint's `data.pkl` without loading it, and writes nothing
+  when there are none (our case).
+- [x] Deleted: `hunyuanpaintpbr/model_emission.py`, `src/data/dataloader/lightgen_emission_loader.py`,
+  and the test that the old path resolves.
+- [x] `predict_emission_views.py` converts its `--config` on load (`load_config`, the converter loaded by
+  file path); `cfgs/lightgen-emission-74k-alpha-thumb-agentic-fir-xg.yaml` converted in place (3 lines);
+  `traincheck.yaml` keeps tag `pre-refactor`'s paths and `train-check.sh` converts it for a tree with
+  the converter; the release launchers' loader preflights import `TextureDataset`.
+- [x] The gate: the frozen parent predictor imports the old loader path, so a tree without it runs
+  the fork's predictor (`gate.sh` `GATE_ENTRY=auto`, `run_checks.py --entry auto`), IDENTICAL
+  required against the same baselines.
+- [x] Names: the loader's log prefix is `[TextureDataset]`; docstrings say the old paths are the
+  converter's; `CLAUDE.md` and the README name the converter.
+
+Checks: every gate shape of both runs through the fork's predictor, IDENTICAL; the training check
+fresh and resume (converted config) against the Blackwell baselines; the tests; `--ckpt` on both
+scored checkpoints.
+
+**Instructions:** the items above. The converter is the only place that maps old names to new ones;
+anything that reads an older config calls it (the predictor through `load_config`, the training check
+through `train-check.sh`), and step 15 points the parent predictor at it.
+
+**Result:** (2026-10-17) Checks on `e903732`; the amend to the branch's commit adds check tooling and
+this Result only.
+
+- The gates, every shape of both runs through the fork's predictor (`--entry auto` chose it):
+  IDENTICAL on every view, split over 17 Solar GPUs and the two 4090s (paper: L40S 139, A40 35,
+  RTX 4090 30 shapes; release: 135, 35, 30).
+- The training check, fresh and resume with the converted `traincheck.yaml`: IDENTICAL, on the
+  Max-Q (the Blackwell SE was taken). For that, the Max-Q got training baselines: two runs of tag
+  `pre-refactor`, fresh and resume, run 2 identical to run 1.
+- `--ckpt` on both scored checkpoints: nothing to convert (they pickle `collections.OrderedDict` and
+  torch storages only). Tests 30 of 30.
+- From Codex's review of the same fix in TEXGen-Emission (its step 20, `bed1e8f`): a protocol-4
+  pickle is refused when it holds a FRAME too, not only STACK_GLOBAL (a GLOBAL that changes size
+  inside a frame would corrupt it), and `--ckpt` compares `src` and `dst` by real path, so a symlink
+  cannot write over its source. Tests 32 of 32; both scored checkpoints still need no conversion.
+- Codex's review (4 findings), all fixed: the checkpoint rewrite now edits only real GLOBAL opcodes
+  (found by parsing the pickle), so a string holding the same bytes is left alone and a mention of
+  an old path in metadata no longer aborts; the config CLI keeps line endings; `checks.sbatch`
+  defaults to `auto` and takes `+cov+fork`.
+- Found while checking: with two dozen threads, run_checks.py's separate ssh logins to star2 failed
+  and a failed `squeue` read as a finished job (the first run was stopped and rerun); every call
+  now shares one connection and retries.
+
+PASS.
+
 ### 15. Branch `release` (per D11) and the rename to `Hunyuan3D-Emission/` (per D4) (needs Dongchen's review of the branch, then his go)
 
 Before anything here: stop after step 14 and ask Dongchen to review the branch (`git log pre-refactor..`,
@@ -796,18 +862,16 @@ before his review (Dongchen 2026-10-11).
 - [ ] The full gates and the training check on the branch head against the `pre-refactor`
   baselines; the tests.
 - [ ] Create `release` at this branch's head (D11); `lightgen` stays at `pre-refactor`.
-- [ ] Delete the two re-exports of D13 and add `scripts/convert_config.py` (old class paths → new,
-  in a stored config); the parent predictor converts `--config` on the fly and imports the loader
-  from its new path, as TEXGen-Emission's `run_texgen_infer.py` does; `test_predict_ref_source.py:14`
-  moves too. Smoke: the paper and release checkpoints through the converted path, 2 shapes each,
-  against their 4090 baselines.
+- [ ] The parent predictor converts `--config` with the fork's `scripts/convert_config.py` and imports
+  the loader from its new path, as TEXGen-Emission's `run_texgen_infer.py` does (the re-exports went
+  at step 14b); `test_predict_ref_source.py:14` moves too. Smoke: the paper and release checkpoints
+  through it, 2 shapes each, against their 4090 baselines.
 - [ ] The release launchers follow (found 2026-10-12, Codex's review of step 14): they check out and
   require branch `lightgen` (`submit_release.sh:94`, `train_release_body.sh:24,86`,
   `stage_alliance.sh:4`), whose tree keeps them under `scripts/lightgen/`, so this branch's copy
-  aborts at `[ -f "$BODY" ]`; and their loader preflights import the re-export
-  (`stage_alliance.sh:117`, `train_release_body.sh:125`). Point them at `release` and
-  `objaverse_loader_forTexturePBR.TextureDataset` together with the re-export deletion; the
-  `.commit` pinning keeps past campaigns on `lightgen`.
+  aborts at `[ -f "$BODY" ]`. Point them at `release` (their loader preflights,
+  `stage_alliance.sh:117` and `train_release_body.sh:125`, import `TextureDataset` since step 14b);
+  the `.commit` pinning keeps past campaigns on `lightgen`.
 - [ ] In the parent, one commit: the gitlink bump, `.gitmodules` `branch = release`, and the rename
   per D4 (`git mv Hunyuan3DPaint-emissive Hunyuan3D-Emission`, the submodule's name stays, then
   `git -C Hunyuan3D-Emission worktree repair`; every parent reference: search again; on 2026-10-06 the predictor's default root `:70`,

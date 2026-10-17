@@ -114,7 +114,7 @@ step_check() {
 import sys
 sys.path.insert(0, ".")
 import hunyuanpaintpbr.unet.model  # noqa: F401
-from src.data.dataloader.lightgen_emission_loader import LightgenEmissionDataset as D
+from src.data.dataloader.objaverse_loader_forTexturePBR import TextureDataset as D
 import cv2
 assert D.REF_SOURCES == ("frontal_albedo", "thumbnail"), D.REF_SOURCES
 print("[check] model + loader import OK; cv2", cv2.__version__)

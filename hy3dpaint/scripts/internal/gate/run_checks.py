@@ -2,7 +2,7 @@
 after TEXGen-Emission's fanout.py).
 
   python3 run_checks.py --rev <commit> --checks paper,release,fresh,resume [--full] [--label <name>]
-                        [--types rtx4090,bwse,...] [--entry parent|fork] [--plan] [--record_baseline]
+                        [--types rtx4090,bwse,...] [--entry auto|parent|fork] [--plan] [--record_baseline]
 
 1. The tree under test: `git archive <rev> hy3dpaint` into $C/trees/<rev>.
 2. Slots, found once, right now (nothing waits for a GPU): the workstation 4090 and sp4090 when free
@@ -18,7 +18,9 @@ Prints one verdict: PASS, FAIL or INCOMPLETE (exit 0, 1, 2). --plan prints the s
 --record_baseline (rev pre-refactor, --full, gates only) adds the merged outputs to baselines.json
 as runs of their type. Gates run the subset20 shapes unless --full. Outputs: $C/out/<type>/<label>/.
 --entry fork runs the gates with the tree's own hy3dpaint/predict_emission_views.py (gate.sh's
-GATE_ENTRY) against the same baselines, which the frozen parent predictor wrote.
+GATE_ENTRY) against the same baselines, which the frozen parent predictor wrote, and passes only when
+IDENTICAL. --entry auto (default): parent while the tree has the old loader module the parent predictor
+imports, else fork (from step 14b on).
 """
 import argparse
 import fcntl
@@ -39,8 +41,8 @@ PY = "/localhome/dya78/software/miniconda3/envs/hunyuanpaint/bin/python"
 ENTRY = "parent"   # gate.sh GATE_ENTRY, set by --entry
 TYPES = {   # seconds per shape on a free GPU (the split); Solar gres names
     "rtx4090": {"speed": 4.2},
-    "bwse": {"speed": 3.3, "gres": "rtx_pro_6000_blackwell_se"},
-    "bwmq": {"speed": 3.4, "gres": "rtx_pro_6000_blackwell_max-q"},
+    "bwse": {"speed": 3.3, "gres": "rtx_pro_6000_blackwell_se", "train": True},   # train: >= 48 GB
+    "bwmq": {"speed": 3.4, "gres": "rtx_pro_6000_blackwell_max-q", "train": True},
     "l40s": {"speed": 5.5, "gres": "l40s"},
     "a40": {"speed": 8.0, "gres": "a40"},
 }
@@ -55,6 +57,24 @@ def sh(cmd, timeout=120):
         return subprocess.run(cmd, shell=True, text=True, capture_output=True, timeout=timeout)
     except subprocess.TimeoutExpired:
         return subprocess.CompletedProcess(cmd, 124, "", "timeout")
+
+
+# Every call to star2 shares one connection: two dozen threads logging in at once hit star2's limit on
+# new connections and failed (2026-10-17), and the poll read a failed squeue as a finished job.
+_MUX = "-o ControlMaster=auto -o ControlPath=~/.ssh/cm-hunyuan-checks-%C -o ControlPersist=900 -o BatchMode=yes"
+SSH = f"ssh {_MUX} star2"
+RSYNC = f"rsync -e 'ssh {_MUX}'"
+
+
+def star2(cmd, timeout=120, tries=6):
+    """sh() for a command that talks to star2, retried while ssh itself fails (exit 255; rsync's 12 and
+    255 when its connection drops). Returns the last result: a caller reads exit 255 as "unknown"."""
+    for k in range(tries):
+        r = sh(cmd, timeout)
+        if r.returncode not in (255, 12):
+            return r
+        time.sleep(5 * 2 ** k)
+    return r
 
 
 def log(msg):
@@ -105,7 +125,7 @@ def sp_free():
 
 def solar_slots(types):
     """{type: [node, ...]}: one entry per usable GPU of the type on our nodes, right now."""
-    r = sh("ssh -o BatchMode=yes star2 'scontrol -o show node'", timeout=60)
+    r = star2(f"{SSH} 'scontrol -o show node'", timeout=60)
     out = {t: [] for t in types}
     gres2type = {TYPES[t]["gres"]: t for t in types}
     for line in r.stdout.splitlines():
@@ -132,9 +152,9 @@ def gate_shas(gate, full):
     return [l.strip() for l in open(os.path.join(C, "inputs", gate, "shas.txt" if full else "subset20.txt")) if l.strip()]
 
 
-def covers(base, typ, gate, full):
-    """A type judges a gate once it has 2 runs that agree byte for byte, or 4 for an envelope."""
-    e = base.get(typ, {}).get(gate)
+def covers(base, typ, check, full=True):
+    """A type judges a check once it has 2 runs that agree exactly, or 4 for an envelope."""
+    e = base.get(typ, {}).get(check)
     n = len(e.get("envelope", [])) if e else 0
     return (n >= 4 or (n >= 2 and e.get("identical", True))) and (not full or e.get("shas", "shas.txt") == "shas.txt")
 
@@ -162,7 +182,8 @@ def plan(gates, train, full, base, types, record):
     for t, nodes in solar_slots(solar_types).items():
         slots += [{"type": t, "host": "solar", "node": n} for n in nodes]
     jobs = []   # (slot index, kind, name, shas or None)
-    tslots = [i for i, s in enumerate(slots) if all(c in base.get(s["type"], {}) for c in train)]
+    tslots = [i for i, s in enumerate(slots) if TYPES[s["type"]].get("train")
+              and (record or all(covers(base, s["type"], c) for c in train))]
     tslots.sort(key=lambda i: TYPES[slots[i]["type"]]["speed"])
     for k, c in enumerate(train):
         if tslots:
@@ -241,31 +262,46 @@ def run_solar(tree_name, label, i, slot, mine, results, hours=1.5):
                  "__MEM__": "120G" if train else "48G", "__TIME__": t}.items():
         script = script.replace(k, v)
     fail = lambda why: (log(f"solar {typ} s{i}: {why}"), [results.__setitem__(n, None) for _, _, n, _ in mine])
-    if sh(f"ssh star2 'mkdir -p ~/hunyuan_checks/tasks/{jl}' && rsync -a {tdir}/ star2:hunyuan_checks/tasks/{jl}/").returncode:
+    if star2(f"{SSH} 'mkdir -p ~/hunyuan_checks/tasks/{jl}' && {RSYNC} -a {tdir}/ star2:hunyuan_checks/tasks/{jl}/").returncode:
         return fail("task sync failed")
-    r = subprocess.run(["ssh", "star2", f"sbatch --parsable --deadline=now+{int(hours * 60) + 5}minutes "
-                        f"--exclude={','.join(sorted(NOT_OURS))}"], input=script,
-                       text=True, capture_output=True, timeout=120)
+    sub_cmd = (f"sbatch --parsable --deadline=now+{int(hours * 60) + 5}minutes "
+               f"--exclude={','.join(sorted(NOT_OURS))}")
+    for k in range(6):   # resubmit only when ssh failed before sbatch could print a job id
+        r = subprocess.run(["ssh", *_MUX.split(), "star2", sub_cmd], input=script, text=True,
+                           capture_output=True, timeout=120)
+        if not (r.returncode == 255 and not r.stdout.strip()):
+            break
+        time.sleep(5 * 2 ** k)
     jid = r.stdout.strip().split(";")[0]
     if r.returncode or not jid.isdigit():
         return fail(f"sbatch failed: {r.stdout} {r.stderr}")
     log(f"solar {typ} s{i}: job {jid}: {', '.join(n for _, _, n, _ in mine)}")
     time.sleep(120)
-    if "PENDING" in sh(f"ssh star2 'squeue -h -j {jid} -o %T'", timeout=60).stdout:
-        sh(f"ssh star2 'scancel {jid}'", timeout=60)
+    if "PENDING" in star2(f"{SSH} 'squeue -h -j {jid} -o %T'", timeout=60).stdout:
+        star2(f"{SSH} 'scancel {jid}'", timeout=60)
         return fail(f"job {jid} did not start at once; canceled")
+    read_status = lambda: star2(f"{SSH} 'cat ~/hunyuan_checks/out/{jl}/status.txt 2>/dev/null || true'", timeout=60)
+    unknown = 0
     while True:
-        status = sh(f"ssh star2 'cat ~/hunyuan_checks/out/{jl}/status.txt 2>/dev/null'", timeout=60).stdout
-        if "CHECKS_" in status:
+        st = read_status()
+        if st.returncode == 0 and "CHECKS_" in st.stdout:
+            status = st.stdout
             break
-        if not sh(f"ssh star2 'squeue -h -j {jid} -o %T'", timeout=60).stdout.strip():
+        q = star2(f"{SSH} 'squeue -h -j {jid} -o %T'", timeout=60)
+        if q.returncode in (0, 1) and not q.stdout.strip():   # the job is gone (1: no longer known)
             time.sleep(30)
-            status = sh(f"ssh star2 'cat ~/hunyuan_checks/out/{jl}/status.txt 2>/dev/null'", timeout=60).stdout
+            status = read_status().stdout
+            break
+        unknown = unknown + 1 if q.returncode not in (0, 1) else 0
+        if unknown >= 20:   # star2 unreachable for ~30 min: give up on this slot, the job keeps its outputs
+            status = ""
+            log(f"solar {typ} s{i}: star2 unreachable; job {jid} left running")
             break
         time.sleep(90)
     dest = os.path.join(C, "out", typ, label, f"s{i}")
     os.makedirs(dest, exist_ok=True)
-    good = sh(f"rsync -a star2:hunyuan_checks/out/{jl}/ {dest}/", timeout=1800).returncode == 0 and f"job={jid}" in status
+    good = (star2(f"{RSYNC} -a star2:hunyuan_checks/out/{jl}/ {dest}/", timeout=1800).returncode == 0
+            and f"job={jid}" in status)
     ok = {l.split()[0] for l in status.splitlines() if " exit=0 " in l} if good else set()
     for _, kind, name, shas in mine:
         results[name] = (os.path.join(dest, name), shas, typ) if name in ok else None
@@ -278,9 +314,9 @@ def dispatch(tree_name, tree, label, slots, jobs):
         by_slot.setdefault(j[0], []).append(j)
     solar_ok = True
     if any(slots[i]["host"] == "solar" for i in by_slot):
-        r = sh(f"ssh star2 'mkdir -p ~/hunyuan_checks/trees ~/hunyuan_checks/tasks ~/hunyuan_checks/logs ~/hunyuan_checks/out' && "
-               f"rsync -a {tree}/ star2:hunyuan_checks/trees/{tree_name}/ && rsync -a --delete {HERE}/ star2:hunyuan_checks/tooling/gate/ && "
-               f"rsync -a {C}/tooling/repo/ star2:hunyuan_checks/tooling/repo/ && rsync -a {C}/inputs/ star2:hunyuan_checks/inputs/", timeout=900)
+        r = star2(f"{SSH} 'mkdir -p ~/hunyuan_checks/trees ~/hunyuan_checks/tasks ~/hunyuan_checks/logs ~/hunyuan_checks/out' && "
+                  f"{RSYNC} -a {tree}/ star2:hunyuan_checks/trees/{tree_name}/ && {RSYNC} -a --delete {HERE}/ star2:hunyuan_checks/tooling/gate/ && "
+                  f"{RSYNC} -a {C}/tooling/repo/ star2:hunyuan_checks/tooling/repo/ && {RSYNC} -a {C}/inputs/ star2:hunyuan_checks/inputs/", timeout=900)
         solar_ok = r.returncode == 0
         if not solar_ok:
             log(f"solar: sync failed: {r.stderr[-300:]}")
@@ -349,20 +385,25 @@ def main():
     ap.add_argument("--types", default=",".join(TYPES))
     ap.add_argument("--plan", action="store_true", help="print the split and stop")
     ap.add_argument("--record_baseline", action="store_true")
-    ap.add_argument("--entry", choices=("parent", "fork"), default="parent",
-                    help="the gates' predictor: the frozen parent one, or the tree's own")
+    ap.add_argument("--entry", choices=("auto", "parent", "fork"), default="auto",
+                    help="the gates' predictor: the frozen parent one, the tree's own, or auto (by the tree)")
     a = ap.parse_args()
-    global ENTRY
-    ENTRY = a.entry
     checks, types = a.checks.split(","), a.types.split(",")
     gates, train = [c for c in checks if c in GATES], [c for c in checks if c in TRAIN]
     bpath = os.path.join(HERE, "baselines.json")
     base = json.load(open(bpath))
-    if a.record_baseline and (a.rev != "pre-refactor" or train or not a.full or a.entry != "parent"
-                              or len(types) != 1):
-        sys.exit("--record_baseline takes --rev pre-refactor, --full, the parent entry, gates only and "
-                 "one --types (a run split over types would record each type's part as a full run)")
     tree_name, tree = make_tree(a.rev)
+    global ENTRY
+    old_loader = os.path.isfile(os.path.join(tree, "hy3dpaint", "src", "data", "dataloader", "lightgen_emission_loader.py"))
+    ENTRY = a.entry if a.entry != "auto" else ("parent" if old_loader else "fork")
+    if ENTRY == "parent" and not old_loader:
+        sys.exit(f"the parent predictor imports src.data.dataloader.lightgen_emission_loader, which {a.rev} lacks; "
+                 "use --entry fork")
+    if a.record_baseline and (a.rev != "pre-refactor" or (gates and not a.full) or ENTRY != "parent"
+                              or len(types) != 1):
+        sys.exit("--record_baseline takes --rev pre-refactor, --full for gates, the parent entry and one "
+                 "--types (a run split over types would record each type's part as a full run)")
+    log(f"gates run the {ENTRY} predictor")
     label = a.label or f"{tree_name}_{time.strftime('%Y%m%d-%H%M%S')}"
     if os.path.exists(os.path.join(C, "out", "rtx4090", label)) or any(
             os.path.exists(os.path.join(C, "out", t, label)) for t in TYPES):
@@ -415,6 +456,10 @@ def main():
             verdict = "INCOMPLETE" if verdict == "PASS" else verdict
             lines.append(f"{c}: did not run or did not finish")
             continue
+        if a.record_baseline:
+            merged[(r[2], c)] = os.path.join(r[0], "record.jsonl")
+            lines.append(f"{c} [{r[2]}]: {merged[(r[2], c)]}")
+            continue
         ok, out = compare_train(r[2], c, r[0], base)
         lines.append(f"{c} [{r[2]}]: " + " | ".join(out))
         if not ok:
@@ -426,11 +471,14 @@ def main():
             fcntl.flock(lk, fcntl.LOCK_EX)
             disk = json.load(open(bpath))
             for (typ, g), m in sorted(merged.items()):
-                e = disk.setdefault(typ, {}).setdefault(g, {"run": None, "shas": "shas.txt", "envelope": []})
+                e = disk.setdefault(typ, {}).setdefault(g, {"run": None, "envelope": []} if g in TRAIN else
+                                                        {"run": None, "shas": "shas.txt", "envelope": []})
                 if e["run"]:
-                    r = subprocess.run([PY, os.path.join(HERE, "compare_views.py"), "--a", e["run"], "--b", m,
-                                        "--shas_file", os.path.join(C, "inputs", g, "shas.txt")],
-                                       text=True, capture_output=True)
+                    cmd = (["python3", os.path.join(HERE, "compare_traincheck.py"), "--a", e["run"], "--b", m]
+                           if g in TRAIN else
+                           [PY, os.path.join(HERE, "compare_views.py"), "--a", e["run"], "--b", m,
+                            "--shas_file", os.path.join(C, "inputs", g, "shas.txt")])
+                    r = subprocess.run(cmd, text=True, capture_output=True)
                     v = re.search(r"verdict=(\w+)", r.stdout)
                     v = v.group(1) if v else f"no verdict (exit {r.returncode})"
                     e["identical"] = e.get("identical", True) and v == "IDENTICAL"
@@ -440,7 +488,7 @@ def main():
             with open(bpath + ".tmp", "w") as f:
                 json.dump(disk, f, indent=1)
             os.replace(bpath + ".tmp", bpath)   # a reader never sees a half-written file
-        lines.append("baselines.json updated (a type judges a gate with 2 identical runs, or 4 runs as an envelope)")
+        lines.append("baselines.json updated (a type judges a check with 2 identical runs, or 4 runs as an envelope)")
     for l in lines:
         print(f"[run_checks] {l}")
     print(f"[run_checks] rev={a.rev} label={label} verdict={verdict}")

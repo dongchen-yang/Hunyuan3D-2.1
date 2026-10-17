@@ -100,6 +100,22 @@
     "/local-scratch/localhome/dya78/lightgen_eval_local/hunyuan_refactor_checks/out/bwmq/base_bwmq_run2/merged_release"
    ],
    "identical": true
+  },
+  "fresh": {
+   "run": "/local-scratch/localhome/dya78/lightgen_eval_local/hunyuan_refactor_checks/out/bwmq/base_bwmq_train_run1/s0/fresh/record.jsonl",
+   "envelope": [
+    "/local-scratch/localhome/dya78/lightgen_eval_local/hunyuan_refactor_checks/out/bwmq/base_bwmq_train_run1/s0/fresh/record.jsonl",
+    "/local-scratch/localhome/dya78/lightgen_eval_local/hunyuan_refactor_checks/out/bwmq/base_bwmq_train_run2/s0/fresh/record.jsonl"
+   ],
+   "identical": true
+  },
+  "resume": {
+   "run": "/local-scratch/localhome/dya78/lightgen_eval_local/hunyuan_refactor_checks/out/bwmq/base_bwmq_train_run1/s1/resume/record.jsonl",
+   "envelope": [
+    "/local-scratch/localhome/dya78/lightgen_eval_local/hunyuan_refactor_checks/out/bwmq/base_bwmq_train_run1/s1/resume/record.jsonl",
+    "/local-scratch/localhome/dya78/lightgen_eval_local/hunyuan_refactor_checks/out/bwmq/base_bwmq_train_run2/s1/resume/record.jsonl"
+   ],
+   "identical": true
   }
  },
  "a40": {

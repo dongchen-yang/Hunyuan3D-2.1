@@ -47,8 +47,8 @@ def extract_into_tensor(a, t, x_shape):
 
 class HunyuanPaint(pl.LightningModule):
     """lightgen: pbr->emission (multiview), our model edited into upstream's HunyuanPaint in place (refactor
-        step 8b; `hunyuanpaintpbr.model_emission.HunyuanPaintEmission`, the class path stored configs name, is
-        this class). Adapted per the 2026-07-30 lightgen spec (revised).
+        step 8b; configs from before the refactor name it `hunyuanpaintpbr.model_emission.HunyuanPaintEmission`,
+        which scripts/convert_config.py maps here). Adapted per the 2026-07-30 lightgen spec (revised).
 
     Design (user-decided 2026-07-30): SINGLE generation stream. GT albedo + metallic-
     roughness latents are channel-concatenated onto the geometry conditioning (normal +

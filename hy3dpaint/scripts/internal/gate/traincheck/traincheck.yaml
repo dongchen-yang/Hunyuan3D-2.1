@@ -1,7 +1,8 @@
 # The training check's config (REFACTOR_TODO.md step 2): the release run's config
 # (cfgs/lightgen-emission-release-alpha-thumb.yaml at tag pre-refactor) with the check root's shapes,
 # batch 1, validation every 16 steps on 2 shapes, one save per checkpointer at the end, and
-# trainer.benchmark off. train-check.sh fills the __TOKENS__. `model:` is the release run's.
+# trainer.benchmark off. train-check.sh fills the __TOKENS__. `model:` is the release run's. The class
+# paths are tag pre-refactor's; train-check.sh converts them for a tree with scripts/convert_config.py.
 model:
   base_learning_rate: 7.0e-05
   target: hunyuanpaintpbr.model_emission.HunyuanPaintEmission

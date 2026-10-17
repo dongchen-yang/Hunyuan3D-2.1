@@ -20,12 +20,15 @@ drift from the model. Each shape's noise is seeded from its uuid and the seed in
 in the list. On one GPU type, a rerun writes the same bytes; another GPU type gives other bytes (a mean
 of 0.1/255 between an RTX 4090 and an RTX PRO 6000 Blackwell). A 24 GB GPU is enough.
 
-This is the parent LightGen repository's `evaluation/mvpaint_bridge/predict_emission_views.py` with its
-repository plumbing taken out; the two write the same bytes. Turning the views into a UV emission map
+A config written before the October 2026 refactor (such as our runs') names older class paths; it is
+converted on load (scripts/convert_config.py). This is the parent LightGen repository's
+`evaluation/mvpaint_bridge/predict_emission_views.py` with its repository plumbing taken out; the two
+write the same bytes. Turning the views into a UV emission map
 and scoring it are the parent repository's (`evaluation/mvpaint_bridge/bridge_views_to_uv.py`).
 """
 import argparse
 import hashlib
+import importlib.util
 import json
 import os
 import sys
@@ -46,6 +49,20 @@ def sample_seed(sha: str, seed: int) -> int:
     the digest, unmasked: masking it would give another RNG stream for the same seed index.
     """
     return int.from_bytes(hashlib.sha256(f"{sha}:{seed}".encode()).digest()[:8], "big")
+
+
+def load_config(path):
+    """The config at `path` as an OmegaConf object, its older class paths converted
+    (scripts/convert_config.py, loaded by file path so no other `scripts` package can shadow it)."""
+    from omegaconf import OmegaConf
+
+    spec = importlib.util.spec_from_file_location(
+        "convert_config", HY3DPAINT_ROOT / "scripts" / "convert_config.py")
+    convert_config = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(convert_config)
+    with open(path) as f:
+        text, _ = convert_config.convert_text(f.read())
+    return OmegaConf.create(text)
 
 
 def resolve_ref_source(config, thumbnail_dir):
@@ -104,11 +121,10 @@ def load_model(config_path, ckpt_path, snapshot=None, val_steps=30, device="cuda
     any missing or unexpected key (a half-loaded model looks like a badly trained one).
     Returns (model, info), info being what the manifest records."""
     import torch
-    from omegaconf import OmegaConf
 
     from src.utils.train_util import instantiate_from_config
 
-    config = OmegaConf.load(config_path)
+    config = load_config(config_path)
     sd_config = config.model.params.stable_diffusion_config
     if snapshot is not None:
         # A config holds the absolute snapshot path of the machine it trained on.
@@ -215,8 +231,7 @@ def main():
     out_root = str(Path(args.out).resolve())
     ckpt_path = str(Path(args.ckpt).resolve())
     thumbnail_dir = str(Path(args.thumbnail_dir).resolve()) if args.thumbnail_dir else None
-    from omegaconf import OmegaConf
-    ref_source, thumbnail_dir = resolve_ref_source(OmegaConf.load(config_path), thumbnail_dir)
+    ref_source, thumbnail_dir = resolve_ref_source(load_config(config_path), thumbnail_dir)
     print(f"[ref] source={ref_source} thumbnail_dir={thumbnail_dir}", flush=True)
     # The model and loader are imported as top-level packages of hy3dpaint/, and the config's
     # custom_pipeline is a path relative to it.

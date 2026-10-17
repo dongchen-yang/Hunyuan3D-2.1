@@ -14,7 +14,7 @@ shuffle -- rerunning this script on any machine, in any Python version, yields t
 Outputs:
   * a sha list (one per line) -- committed, it pins which shapes we validate on;
   * optionally an examples JSON (list of absolute shape dirs under a fixture root) in the
-    format `LightgenEmissionDataset` expects.
+    format `TextureDataset` (the loader) expects.
     The fixture root is machine-specific (e.g. venus's /localscratch/... staging dir), so the
     JSON is generated per machine while the sha list stays the single source of truth.
 

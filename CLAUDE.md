@@ -19,15 +19,17 @@ the parent's gitlink.
 |---|---|---|
 | jupiter | `outputs/mvpaint_74k_alpha_thumb_agentic` | `outputs/mvpaint_alpha_thumb_lightgenbench_v1` |
 | data | 74k v2 agentic | LightgenBench: 36,426 / 200 / 200 |
-| config | `cfgs/lightgen-emission-74k-alpha-thumb-agentic-fir-xg.yaml` (= the run's `config.yaml`) | the release template, filled |
+| config | `cfgs/lightgen-emission-74k-alpha-thumb-agentic-fir-xg.yaml` (= the run's `config.yaml`, converted) | the release template, filled |
 | scored | `ckpts/troughs/trough-step=00050000.ckpt` | `ckpts/troughs/trough-step=00040000.ckpt` |
 
 Both: 4 × H100 80 GB, global batch 16, LR 7e-5, 50,000 steps, 24-channel `conv_in`, thumbnail
 reference. Checkpoints are 17.9 GB and pickle no class of ours: the contract is the 2,482 state-dict
 keys and the `target:` strings of stored configs, which name `hunyuanpaintpbr.model_emission.HunyuanPaintEmission`
-and `src.data.dataloader.lightgen_emission_loader.LightgenEmissionDataset`. Those two modules are
-one-line re-exports of `HunyuanPaint` and `TextureDataset` until step 15 (the parent's
-`evaluation/mvpaint_bridge/predict_emission_views.py` imports the loader by that path).
+and `src.data.dataloader.lightgen_emission_loader.LightgenEmissionDataset`, modules this code no longer
+has. `hy3dpaint/scripts/convert_config.py` is the one place for every such conversion (configs, and
+checkpoints with `--ckpt`, which ours do not need): `predict_emission_views.py` and the training check
+call it. The parent's `evaluation/mvpaint_bridge/predict_emission_views.py` still imports the old loader
+path, so it runs only against `lightgen` until step 15 moves it.
 
 ## Environments
 

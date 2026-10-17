@@ -261,14 +261,6 @@ def test_init_rejects_bad_reference_arguments():
             TextureDataset(js, thumbnail_dir=os.path.dirname(js))
 
 
-
-
-def test_stored_class_path_resolves_to_texture_dataset():
-    """Stored configs and the parent's predictor name lightgen_emission_loader.LightgenEmissionDataset,
-    a re-export of TextureDataset until refactor step 15."""
-    from src.data.dataloader.lightgen_emission_loader import LightgenEmissionDataset as stored
-    assert stored is TextureDataset
-
 if __name__ == "__main__":
     test_texture_dataset_shapes()
     test_corrupt_example_is_substituted()
