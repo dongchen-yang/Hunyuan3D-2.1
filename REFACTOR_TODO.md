@@ -30,7 +30,7 @@ same for `plans/2026-09-16-hunyuan3d-paint-refactor.md`); use them as a source o
 - [x] 13. Release layer: generic entry points for LightgenBench users (per D15)
 - [x] 14. Docs
 - [x] 14b. The old class paths go; one converter for configs and checkpoints (Dongchen 2026-10-17, at review)
-- [ ] 15. Branch `release` (per D11) and the rename to `Hunyuan3D-Emission/` (per D4) (needs Dongchen's review of the branch, then his go)
+- [x] 15. Branch `release` (per D11) and the rename to `Hunyuan3D-Emission/` (per D4) (needs Dongchen's review of the branch, then his go)
 - [ ] 16. Cut-over (per D8)
 - [ ] 17. Release cut: our internal files leave the published tree (per D10)
 
@@ -859,20 +859,20 @@ Before anything here: stop after step 14 and ask Dongchen to review the branch (
 `git diff pre-refactor`); nothing merges, no `release` branch is created and no parent commit happens
 before his review (Dongchen 2026-10-11).
 
-- [ ] The full gates and the training check on the branch head against the `pre-refactor`
+- [x] The full gates and the training check on the branch head against the `pre-refactor`
   baselines; the tests.
-- [ ] Create `release` at this branch's head (D11); `lightgen` stays at `pre-refactor`.
-- [ ] The parent predictor converts `--config` with the fork's `scripts/convert_config.py` and imports
+- [x] Create `release` at this branch's head (D11); `lightgen` stays at `pre-refactor`.
+- [x] The parent predictor converts `--config` with the fork's `scripts/convert_config.py` and imports
   the loader from its new path, as TEXGen-Emission's `run_texgen_infer.py` does (the re-exports went
   at step 14b); `test_predict_ref_source.py:14` moves too. Smoke: the paper and release checkpoints
   through it, 2 shapes each, against their 4090 baselines.
-- [ ] The release launchers follow (found 2026-10-12, Codex's review of step 14): they check out and
+- [x] The release launchers follow (found 2026-10-12, Codex's review of step 14): they check out and
   require branch `lightgen` (`submit_release.sh:94`, `train_release_body.sh:24,86`,
   `stage_alliance.sh:4`), whose tree keeps them under `scripts/lightgen/`, so this branch's copy
   aborts at `[ -f "$BODY" ]`. Point them at `release` (their loader preflights,
   `stage_alliance.sh:117` and `train_release_body.sh:125`, import `TextureDataset` since step 14b);
   the `.commit` pinning keeps past campaigns on `lightgen`.
-- [ ] In the parent, one commit: the gitlink bump, `.gitmodules` `branch = release`, and the rename
+- [x] In the parent, one commit: the gitlink bump, `.gitmodules` `branch = release`, and the rename
   per D4 (`git mv Hunyuan3DPaint-emissive Hunyuan3D-Emission`, the submodule's name stays, then
   `git -C Hunyuan3D-Emission worktree repair`; every parent reference: search again; on 2026-10-06 the predictor's default root `:70`,
   its error message and the init command it suggests `:123-125`, its docstring and help `:45,53,321`, `../evaluation/newdata_eval/sweeps/{job_hunyuan.sh,
@@ -881,14 +881,14 @@ before his review (Dongchen 2026-10-11).
   (also stale on the reference image and the channel count), the `run_xg.sh` of Keep stable 3,
   and outside the repo the release drivers of Keep stable 1). Stage only this work's hunks: other
   sessions leave uncommitted edits in the parent.
-- [ ] Parent docs: `../AGENTS.md:34,56,66,176` (`:66` names `submit_chain_fir.sh`; the release run
+- [x] Parent docs: `../AGENTS.md:34,56,66,176` (`:66` names `submit_chain_fir.sh`; the release run
   used `submit_release.sh`), a new `../.claude/rules/hunyuan3d.md` (path-scoped like `texgen.md` and
   `trellis2.md`; listed in `AGENTS.md`), `../docs/baselines/hunyuan3d-paint.md:5-7,28-35,50,162-190,279,290`,
   `../docs/status/checkpoints.md:34,52,318-319` (local copies that no longer exist),
   `../docs/evaluation.md:346` (says the paper inference ran on the local 4090 and omits
   `--blacken_bg`; it ran on Solar with it), `../docs/status/refactor.md` (a Hunyuan entry; its
   duplicated `### Data processing` heading).
-- [ ] Evaluation-lane follow-ups, recorded in `../docs/status/refactor.md`, not fixed here: the bridge
+- [x] Evaluation-lane follow-ups, recorded in `../docs/status/refactor.md`, not fixed here: the bridge
   subtracts a 128/255 background while the renderer fills 127 (`bridge_views_to_uv.py:418`,
   `multiview.py:68`); `rescore_prf.py:112-133` maps the Hunyuan rows to the pre-fix directories; the
   star2 worker reuses the fork tree of its first bootstrap until `BOOTSTRAP_OK` and `.fork_ok` are
@@ -898,12 +898,48 @@ before his review (Dongchen 2026-10-11).
   after its chdir (it checks the caller's directory, `:90-103`; the gate passes absolute paths);
   the predictor's docstring (`:259-260`) counts 5 VAE `posterior.sample()` calls at
   `unet/model.py:233` (there are six, at `:234`); the two 4090 lock files.
-- [ ] Decide here: rename the GitHub repository `dongchen-yang/Hunyuan3D-2.1` too (TEXGen kept its
+- [x] Decide here: rename the GitHub repository `dongchen-yang/Hunyuan3D-2.1` too (TEXGen kept its
   name)? Push `release` only on Dongchen's go.
 
-**Instructions:**
+**Instructions:** Dongchen 2026-10-17, after reviewing: "push it and update our lightgen repo; the name should be
+Hunyuan3D-Emission".
 
-**Result:**
+- Decided here: the directory is renamed (D4); the GitHub repository keeps its name
+  `dongchen-yang/Hunyuan3D-2.1`, as TEXGen, TRELLIS.2 and SegviGen kept theirs (GitHub would redirect a
+  renamed repo's old URL, so a later rename stays possible).
+- In the fork: the release launchers check out and require `release`; two comments name the new
+  directory; `release` is created at the branch head and pushed; the main checkout moves to it.
+- In the parent, one commit, staged by path and by hunk (other sessions' uncommitted edits stay out):
+  `git mv Hunyuan3DPaint-emissive Hunyuan3D-Emission` (the submodule's name stays), `worktree repair`,
+  `.gitmodules` `branch = release`, the gitlink at `release`; `evaluation/mvpaint_bridge/predict_emission_views.py`
+  converts `--config` with the fork's `scripts/convert_config.py` when the fork has one, imports the loader
+  from the old path on an older fork and from `objaverse_loader_forTexturePBR` otherwise, and resolves
+  `--hy3dpaint_root` before its chdir; its test, `hunyuan_cameras.py`, `job_hunyuan.sh` (a staged host
+  keeps the old name), `seedutil.py`'s list of copies, the figure README, `AGENTS.md`, a new
+  `.claude/rules/hunyuan3d.md`, `docs/baselines/hunyuan3d-paint.md` (header: the record is the fork's
+  README and CLAUDE.md), `docs/evaluation.md` (`--blacken_bg`; where the paper and release views ran),
+  `docs/status/checkpoints.md` (two local copies that are gone), `docs/status/refactor.md` (the entry, the
+  follow-ups, the duplicated heading), the two READMEs that said the fork still reads the old split lists.
+- Kept: dated records (`docs/superpowers/`, past commit hashes, an output folder's script), and the sweep
+  tooling for copies staged elsewhere (`stage_hunyuan_host.sh`, `star2/hunyuan_worker.sbatch`,
+  `hosts.json`), which step 16 moves.
+- Found and fixed in the checks: a job on a node not used before (cs-venus-09, 111 GB free) refused to
+  stage, since `checks.sbatch` asked 150 GB of every job; a job without a training check now needs 80.
+
+**Result:** (2026-10-17) Checks on `808f1db`, the fork side of this step (the amend adds the plan and
+`checks.sbatch`'s space rule only):
+
+- The gates through the fork's predictor, every shape of both runs: IDENTICAL (paper 204 = A40 45, Max-Q 78,
+  L40S 59, RTX 4090 22; release 200 = 45, 78, 57, 20). The first run left the cs-venus-09 pieces unrun
+  (the space rule above); the rerun ran them all.
+- The training check, fresh and resume, on the Max-Q: IDENTICAL.
+- The parent's updated predictor, on sp4090 with this tree: 2 shapes of each run IDENTICAL to the 4090
+  baselines (the stored configs converted on load, the loader from its new path).
+- Tests: the fork's 32; the parent's predictor and camera tests after the rename (the parent commit's
+  message has them).
+
+PASS. The commits, the push of `release` and the parent commit are in the parent's commit message and
+`../docs/status/refactor.md`.
 
 ### 16. Cut-over (per D8)
 

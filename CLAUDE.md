@@ -50,10 +50,8 @@ python predict_emission_views.py --config <run>/configs/project.yaml --ckpt <ckp
 python -m pytest scripts/lightgen/ -q
 ```
 
-Until step 15 points them at `release`, the release launchers check out branch `lightgen`
-(`submit_release.sh:94`, `train_release_body.sh:86`), whose tree keeps them under
-`scripts/lightgen/`: this branch's copy aborts there, so submit with `lightgen`'s own
-`scripts/lightgen/submit_release.sh`.
+The release launchers check out and require branch `release` (`submit_release.sh:94`,
+`train_release_body.sh:86`); a stamp submitted earlier stays on the commit its `.commit` file names.
 
 ## Checking a code change
 

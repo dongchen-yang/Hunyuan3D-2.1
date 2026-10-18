@@ -12,7 +12,7 @@
 # Blackwell/Ada-class GPUs), hence the torch>=2.7 + cu128 pin (sm_120 Blackwell compat).
 #
 # Usage:
-#   cd Hunyuan3DPaint-emissive
+#   cd Hunyuan3D-Emission
 #   bash hy3dpaint/scripts/lightgen/env_setup.sh
 #
 set -euo pipefail

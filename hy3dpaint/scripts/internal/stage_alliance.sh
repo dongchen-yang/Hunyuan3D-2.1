@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Bring one Alliance cluster up for the released-dataset training: venv, weights, data.
 # Run on the cluster's LOGIN node (it has the network; most compute nodes do not), from the
-# clone at <scratch>/lightgen_mvpaint/Hunyuan3D-2.1-emissive (branch lightgen):
+# clone at <scratch>/lightgen_mvpaint/Hunyuan3D-2.1-emissive (branch release):
 #
 #   bash hy3dpaint/scripts/internal/stage_alliance.sh [env|weights|data|check|all]    # default all
 #

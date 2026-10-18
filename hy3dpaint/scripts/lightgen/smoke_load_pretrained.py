@@ -12,7 +12,7 @@ Answers, definitively:
 Prints `SNAPSHOT=<path>` on its own line — that path is `pretrained_snapshot_path`,
 consumed by Task 7's config and Task 8's staging.
 
-Run (from the Hunyuan3DPaint-emissive submodule root, hunyuanpaint conda env):
+Run (from the Hunyuan3D-Emission submodule root, hunyuanpaint conda env):
     conda run -n hunyuanpaint bash -c \
         'export PYTHONNOUSERSITE=1; python hy3dpaint/scripts/lightgen/smoke_load_pretrained.py'
 

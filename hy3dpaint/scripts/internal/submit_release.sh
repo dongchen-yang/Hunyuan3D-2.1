@@ -91,7 +91,7 @@ if [ -f "$CAMPAIGN" ]; then
     [ "$(git rev-parse HEAD)" = "$COMMIT" ] || { echo "ABORT: stamp $STAMP was submitted on $COMMIT but the clone is at $(git rev-parse HEAD). Check that commit out to extend it, or start a NEW stamp."; exit 2; }
     echo "[submit] extending stamp $STAMP on its recorded commit ${COMMIT:0:7} (no pull)"
 elif [ $DRY = 0 ]; then
-    git fetch -q origin lightgen && git checkout -q lightgen && git pull -q --ff-only origin lightgen \
+    git fetch -q origin release && git checkout -q release && git pull -q --ff-only origin release \
         || { echo "ABORT: git pull --ff-only failed on $CLUSTER (local changes or a diverged branch) -- investigate, do not overwrite"; exit 2; }
 fi
 [ -z "$(git status --porcelain --untracked-files=no)" ] || { echo "ABORT: tracked files are modified in $REPO"; git status --short --untracked-files=no; exit 2; }

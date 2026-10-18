@@ -53,8 +53,10 @@ IFS=, read -ra DEVS <<< "${CUDA_VISIBLE_DEVICES:-$(seq -s, 0 $((NGPU-1)))}"
 [ "${#DEVS[@]}" -ge "$NGPU" ] || die "the job has ${#DEVS[@]} GPUs, the tasks need $NGPU"
 FREE_GB=$(df -BG --output=avail /localscratch | tail -1 | tr -dc 0-9)
 say "/localscratch free: ${FREE_GB} GB"
-[ "$FREE_GB" -ge 150 ] || [ -f "$LS/ckpts/mvpaint_alpha_thumb_lightgenbench_v1/ckpts/troughs/.ok_trough-step=00040000.weights.ckpt" -a "$FREE_GB" -ge 80 ] \
-  || die "only ${FREE_GB} GB free on /localscratch (staging ~55 GB, each training check writes ~36 GB)"
+# Staging takes ~55 GB once per node; a training check writes ~36 GB more.
+NEED=80; grep -qE '^[0-9]+ [^ ]+ (fresh|resume)' "$H/$TASKFILE" && NEED=150
+[ "$FREE_GB" -ge "$NEED" ] || [ -f "$LS/ckpts/mvpaint_alpha_thumb_lightgenbench_v1/ckpts/troughs/.ok_trough-step=00040000.weights.ckpt" -a "$FREE_GB" -ge 80 ] \
+  || die "only ${FREE_GB} GB free on /localscratch, $NEED needed (staging ~55 GB, each training check writes ~36 GB)"
 
 ACT=$OUT/activate.sh
 cat > "$ACT" <<EOF

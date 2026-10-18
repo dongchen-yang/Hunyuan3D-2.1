@@ -21,7 +21,7 @@
 #   env/           scripts/internal/stage_alliance.sh env      (python 3.12, torch 2.11.0)
 #   hf_home/       scripts/internal/stage_alliance.sh weights  (Hunyuan3D-2.1 pinned + dinov2-giant)
 #   release_hf/    scripts/internal/stage_alliance.sh data     (the HF tars, sha256-verified)
-#   Hunyuan3D-2.1-emissive/   the clone, branch lightgen, at the commit the job was submitted on
+#   Hunyuan3D-2.1-emissive/   the clone, branch release, at the commit the job was submitted on
 #
 # AFTER THE RUN: the troughs stay on the cluster's scratch. Pull <logdir>/checkpoints/troughs/
 # to the workstation, forward to jupiter outputs/<run>/ckpts/, sha256 BOTH ends, MANIFEST row.
@@ -83,7 +83,7 @@ fi
 # --- code: the commit this job was submitted on, not whatever the clone holds now ------------
 cd "$REPO"
 BRANCH=$(git rev-parse --abbrev-ref HEAD)
-[ "$BRANCH" = "lightgen" ] || { echo "ABORT: clone is on branch '$BRANCH', expected lightgen"; exit 2; }
+[ "$BRANCH" = "release" ] || { echo "ABORT: clone is on branch '$BRANCH', expected release"; exit 2; }
 HEAD_NOW=$(git rev-parse HEAD)
 [ "$HEAD_NOW" = "$COMMIT" ] || { echo "ABORT: clone is at $HEAD_NOW but this job was submitted on $COMMIT -- the config or model code changed while the chain was queued. Cancel the chain and start a NEW stamp."; exit 2; }
 # The commit says nothing about an edit that was never committed.
