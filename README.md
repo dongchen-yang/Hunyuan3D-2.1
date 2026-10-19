@@ -156,9 +156,8 @@ reference-image rules, and the config and checkpoint conversion (CPU only).
 | `hunyuanpaintpbr/` | the model (`unet/model.py`) and the UNet (`unet/modules.py`), upstream's files edited in place |
 | `src/data/dataloader/objaverse_loader_forTexturePBR.py` | the loader, upstream's file with our class |
 | `cfgs/` | the release config template; the paper run's config (`-fir-xg`) |
-| `scripts/lightgenbench/` | `unpack_hf_dataset.sh`: the Hugging Face dataset to the data folder and config |
+| `scripts/lightgenbench/` | `unpack_hf_dataset.sh`: the Hugging Face dataset to the data folder and config; what it runs (re-layout, example lists) |
 | `scripts/convert_config.py` | configs and checkpoints from the code before its refactor to the current names |
-| `scripts/lightgen/` | what the data script runs (re-layout, example lists) |
 | `scripts/internal/` | our cluster launchers, regression checks and tests; not needed to use the code |
 
 Upstream's shape model (`hy3dshape/`), texture demo (`demo.py`, `textureGenPipeline.py`), Gradio app

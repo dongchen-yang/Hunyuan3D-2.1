@@ -14,7 +14,7 @@
 #   <data_dir>/shapes/<uuid>/render_cond/000.png
 #   <data_dir>/thumbs/<uuid>.png           the reference image
 # Then the example lists, from splits.json: release_train.json (all of train), release_val64.json (the
-# 64 validation shapes training validates on, scripts/lightgen/val64_release_shas.txt) and
+# 64 validation shapes training validates on, scripts/lightgenbench/val64_release_shas.txt) and
 # release_test.json (all of test). Last, the training config:
 #   <data_dir>/lightgen-emission-release-alpha-thumb.yaml
 # is cfgs/lightgen-emission-release-alpha-thumb.yaml with its paths filled in. It names the
@@ -80,15 +80,15 @@ print("[splits]", {k: len(splits[k]) for k in ("train", "val", "test")})
 PY
 
 echo "[layout] render_cond/000.png, thumbs/<uuid>.png"
-python "$HY/scripts/lightgen/relayout_release.py" --root "$D/shapes" --thumbs_out "$D/thumbs" \
+python "$HY/scripts/lightgenbench/relayout_release.py" --root "$D/shapes" --thumbs_out "$D/thumbs" \
   --shas "$D/splits/train.txt" "$D/splits/val.txt" "$D/splits/test.txt"
 
 # The training lists through the builder the release run used, with its checks: the splits disjoint,
 # every listed shape whole on disk with its thumbnail, none missing.
 echo "[lists] release_train.json, release_val64.json, release_test.json"
-python "$HY/scripts/lightgen/make_74k_jsons.py" \
+python "$HY/scripts/lightgenbench/make_example_lists.py" \
   --train_shas "$D/splits/train.txt" --val_shas "$D/splits/val.txt" --test_shas "$D/splits/test.txt" \
-  --val64_shas "$HY/scripts/lightgen/val64_release_shas.txt" \
+  --val64_shas "$HY/scripts/lightgenbench/val64_release_shas.txt" \
   --fixture_root "$D/shapes" --thumbnail_dir "$D/thumbs" \
   --out_train "$D/release_train.json" --out_val64 "$D/release_val64.json" \
   --expect_train "$(wc -l < "$D/splits/train.txt")"

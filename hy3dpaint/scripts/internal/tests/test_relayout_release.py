@@ -1,5 +1,5 @@
 """Tests for relayout_release.py: the release layout becomes the fixture layout, and the
-result passes make_74k_jsons.py's own A7 checks (the gate the job runs next).
+result passes make_example_lists.py's own A7 checks (the gate the job runs next).
 
     python -m pytest scripts/internal/tests/test_relayout_release.py -q
 """
@@ -8,10 +8,10 @@ import os
 import subprocess
 import sys
 
-HERE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "lightgen")
+HERE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "lightgenbench")
 sys.path.insert(0, HERE)
 
-import make_74k_jsons as gate  # noqa: E402
+import make_example_lists as gate  # noqa: E402
 import relayout_release as rr  # noqa: E402
 
 SHA_A = "0" * 31 + "a"

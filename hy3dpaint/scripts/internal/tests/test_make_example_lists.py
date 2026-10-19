@@ -1,4 +1,4 @@
-"""pytest for make_74k_jsons.py's A7 thumbnail gate (--thumbnail_dir).
+"""pytest for make_example_lists.py's A7 thumbnail gate (--thumbnail_dir).
 
 Runs the script as a subprocess on a synthetic staged root, exactly as the launcher invokes it.
 """
@@ -11,7 +11,7 @@ import tempfile
 import numpy as np
 from PIL import Image
 
-SCRIPT = os.path.join(os.path.dirname(__file__), "..", "..", "lightgen", "make_74k_jsons.py")
+SCRIPT = os.path.join(os.path.dirname(__file__), "..", "..", "lightgenbench", "make_example_lists.py")
 SUFFIXES = ("albedo", "emission", "mr", "alpha", "normal", "pos")
 
 

@@ -5,7 +5,7 @@ The released dataset (Hugging Face 3dlg-hcvc/LightgenBench) ships one directory 
     <root>/<uuid>/multiview/00N_{albedo,mr,normal,pos,emission,alpha}.png + transforms.json
     <root>/<uuid>/thumbnail.png
 
-The loader (`TextureDataset`) and `make_74k_jsons.py` were written against the render fixture:
+The loader (`TextureDataset`) and `make_example_lists.py` were written against the render fixture:
 
     <root>/<sha>/render_tex/<the same 37 files>
     <root>/<sha>/render_cond/000.png
@@ -19,7 +19,7 @@ differ, so this renames and links in place instead of touching the loader:
     thumbnail.png             -> <thumbs_out>/<uuid>.png      hard link
 
 `render_cond/000.png` is what it was in the fixture, a copy of `render_tex/001_albedo.png`.
-A `ref_source: thumbnail` run never reads it; `make_74k_jsons.py`'s A7 gate requires it.
+A `ref_source: thumbnail` run never reads it; `make_example_lists.py`'s A7 gate requires it.
 
 Run it on node-local storage inside the job, on the tree the tars were just unpacked into.
 Never run it on jupiter's `dataset_release`: those files are hard links into `dataset_73k`.

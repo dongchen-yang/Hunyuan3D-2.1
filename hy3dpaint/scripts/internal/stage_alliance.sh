@@ -120,7 +120,7 @@ assert D.REF_SOURCES == ("frontal_albedo", "thumbnail"), D.REF_SOURCES
 print("[check] model + loader import OK; cv2", cv2.__version__)
 PY
     )
-    ( cd "$REPO/hy3dpaint" && python -m pytest -q scripts/internal/tests/test_relayout_release.py scripts/internal/tests/test_make_74k_jsons.py 2>&1 | tail -2 )
+    ( cd "$REPO/hy3dpaint" && python -m pytest -q scripts/internal/tests/test_relayout_release.py scripts/internal/tests/test_make_example_lists.py 2>&1 | tail -2 )
     deactivate
 }
 

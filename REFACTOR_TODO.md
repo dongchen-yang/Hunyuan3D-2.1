@@ -34,7 +34,7 @@ same for `plans/2026-09-16-hunyuan3d-paint-refactor.md`); use them as a source o
 - [x] 15. Branch `release` (per D11) and the rename to `Hunyuan3D-Emission/` (per D4) (needs Dongchen's review of the branch, then his go)
 - [ ] 16. Cut-over (per D8); runs after step 22, onto Part 2's final tree
 - [x] 17. Part 2: the internal-only files under `scripts/internal/` (moves only)
-- [ ] 18. Part 2: the public data scripts in `scripts/lightgenbench/`
+- [x] 18. Part 2: the public data scripts in `scripts/lightgenbench/`
 - [ ] 19. Part 2: the release config named by role
 - [ ] 20. Part 2: comments and docstrings at upstream's density, no internal names
 - [ ] 21. Part 2: the README for the public tree; internal notes in `CLAUDE.md`
@@ -1049,11 +1049,11 @@ Tests 32 of 32, no skip (workstation); `bash -n` clean; no GPU check (moves only
 
 ### 18. The public data scripts in `scripts/lightgenbench/`
 
-- [ ] `relayout_release.py`, `val64_release_shas.txt` and `make_74k_jsons.py` move from
+- [x] `relayout_release.py`, `val64_release_shas.txt` and `make_74k_jsons.py` move from
   `scripts/lightgen/` (gone after this) to `scripts/lightgenbench/`, beside `unpack_hf_dataset.sh`.
   `make_74k_jsons.py` becomes `make_example_lists.py`: it builds the release's lists, and "74k" names
   the data it was first written for.
-- [ ] Callers follow: `unpack_hf_dataset.sh:17,83,89,91`, `train_release_body.sh:166,171,175`, the
+- [x] Callers follow: `unpack_hf_dataset.sh:17,83,89,91`, `train_release_body.sh:166,171,175`, the
   tests, the docstrings that name the old paths, `CLAUDE.md`, the README (`:161`).
 
 Checks: the tests; `unpack_hf_dataset.sh` on step 13's slice of the release (redone on this step's
@@ -1066,7 +1066,9 @@ normalized.
 
 **Instructions:**
 
-**Result:**
+**Result:** Checks on `c810f1d`: the three scripts in `scripts/lightgenbench/` (`make_example_lists.py`, its test too);
+unpack on the slice: lists and all 56,007 files identical but the config's 4 renamed comment lines (dicts equal);
+`--dry-run` on six clusters: only the 3 moved paths differ. Tests 32 of 32. PASS.
 
 ### 19. The release config named by role
 

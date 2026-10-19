@@ -39,11 +39,11 @@ staged root before this script (see the phase-2 task-4 report).
 Run it on the node that will train, so A3/A7 look at the real staged filesystem. The release run's
 call (scripts/internal/train_release_body.sh; --thumbnail_dir only for thumbnail-reference runs):
 
-    python scripts/lightgen/make_74k_jsons.py \
+    python scripts/lightgenbench/make_example_lists.py \
         --train_shas  $STAGE/shas/train.txt \
         --val_shas    $STAGE/shas/val.txt \
         --test_shas   $STAGE/shas/test.txt \
-        --val64_shas  scripts/lightgen/val64_release_shas.txt \
+        --val64_shas  scripts/lightgenbench/val64_release_shas.txt \
         --fixture_root $STAGE/release \
         --thumbnail_dir $STAGE/thumbs \
         --out_train   $STAGE/release_train.json \

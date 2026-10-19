@@ -163,16 +163,16 @@ for pair in "train:$EXPECT_TRAIN" "val:$EXPECT_VAL" "test:$EXPECT_TEST"; do
 done
 
 echo "=== re-laying-out to the fixture layout ==="
-python scripts/lightgen/relayout_release.py --root "$STAGE/release" --thumbs_out "$STAGE/thumbs" \
+python scripts/lightgenbench/relayout_release.py --root "$STAGE/release" --thumbs_out "$STAGE/thumbs" \
     --shas "$STAGE/shas/train.txt" "$STAGE/shas/val.txt"
 
 # --- example JSONs: the paper's builder and its A0-A7 gates, unchanged -------------------------
 echo "=== building example JSONs ==="
-python scripts/lightgen/make_74k_jsons.py \
+python scripts/lightgenbench/make_example_lists.py \
     --train_shas  "$STAGE/shas/train.txt" \
     --val_shas    "$STAGE/shas/val.txt" \
     --test_shas   "$STAGE/shas/test.txt" \
-    --val64_shas  scripts/lightgen/val64_release_shas.txt \
+    --val64_shas  scripts/lightgenbench/val64_release_shas.txt \
     --fixture_root "$STAGE/release" \
     --thumbnail_dir "$STAGE/thumbs" \
     --out_train   "$STAGE/release_train.json" \
