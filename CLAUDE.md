@@ -32,13 +32,13 @@ the parent's `evaluation/mvpaint_bridge/predict_emission_views.py` call it.
 
 ## The public tree
 
-The published repository (D16 in `REFACTOR_TODO.md`) is this branch without its internal paths:
-`REFACTOR_TODO.md`, `CLAUDE.md`, `hy3dpaint/scripts/internal/` (the checks, the cluster launchers, the
-env record, the tests) and `hy3dpaint/cfgs/lightgen-emission-74k-alpha-thumb-agentic-fir-xg.yaml` (the
-paper run's config). Everything else is public: `README.md`, comments and `--help` texts name only
-public files and no cluster, user, account, jupiter path, parent-repo path or plan step (the scan in
-`REFACTOR_TODO.md` § Part 2). A change lands here first, is checked here, then goes out as a new export
-commit (step 23).
+This fork is the code's home: `dongchen-yang/Hunyuan3D-Emission` (named `Hunyuan3D-2.1` until 2026-10-19),
+public, as GitHub keeps every fork of a public repository; a separate public repository (step 23) was
+dropped. Its internal paths are `REFACTOR_TODO.md`, `CLAUDE.md`, `hy3dpaint/scripts/internal/` (the checks,
+the cluster launchers, the env record, the tests) and
+`hy3dpaint/cfgs/lightgen-emission-74k-alpha-thumb-agentic-fir-xg.yaml` (the paper run's config). Everything
+else is written for users: `README.md`, comments and `--help` texts name only public files and no cluster,
+user, account, jupiter path, parent-repo path or plan step (the scan in `REFACTOR_TODO.md` § Part 2).
 
 Tests (CPU): `python -m pytest scripts/internal/tests/ -q` from `hy3dpaint/`: the loader, the example
 lists, the re-layout, the predictor's seed and reference rules, the converter. The loader's first test
