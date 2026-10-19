@@ -37,7 +37,7 @@ same for `plans/2026-09-16-hunyuan3d-paint-refactor.md`); use them as a source o
 - [x] 18. Part 2: the public data scripts in `scripts/lightgenbench/`
 - [x] 19. Part 2: the release config named by role
 - [x] 20. Part 2: comments and docstrings at upstream's density, no internal names
-- [ ] 21. Part 2: the README for the public tree; internal notes in `CLAUDE.md`
+- [x] 21. Part 2: the README for the public tree; internal notes in `CLAUDE.md`
 - [ ] 22. Part 2: final checks; `release` and the parent follow (needs Dongchen's review, then his go)
 - [ ] 23. Part 2: the public repository (per D16; needs Dongchen's go)
 
@@ -1130,14 +1130,14 @@ Share now (upstream): model 0.30 (0.29), loader 0.28 (0.16), `train.py` 0.14 (0.
 
 ### 21. The README for the public tree; internal notes in `CLAUDE.md`
 
-- [ ] `README.md` names only public files: the repository table drops `scripts/internal/` and
+- [x] `README.md` names only public files: the repository table drops `scripts/internal/` and
   `scripts/lightgen/` and takes the names of steps 18-19; the Tests section and the paper run's config
   (`:158`) move to `CLAUDE.md`. The release run's recipe and checkpoint choice stay.
-- [ ] The upstream-diff command (`README.md:43`, `git diff origin/main -- hy3dpaint/`) follows D16. In a
+- [x] The upstream-diff command (`README.md:43`, `git diff origin/main -- hy3dpaint/`) follows D16. In a
   new repository `main` is ours, so the command becomes `git diff 82920d6 -- hy3dpaint/`; with D16's
   alternative it stays.
-- [ ] `CLAUDE.md` gains the internal-path list of § Part 2, the cut rule and the test command.
-- [ ] Upstream's attribution, license and citation stay (the README's top and bottom, `LICENSE`,
+- [x] `CLAUDE.md` gains the internal-path list of § Part 2, the cut rule and the test command.
+- [x] Upstream's attribution, license and citation stay (the README's top and bottom, `LICENSE`,
   `Notice.txt`, `README_hunyuan3d.md`).
 
 Checks: every path in the README exists in the public tree; its argparse scripts answer `--help`
@@ -1146,7 +1146,9 @@ on the README. Step 23 runs the upstream-diff command in the exported clone.
 
 **Instructions:**
 
-**Result:**
+**Result:** README: no internal path, `git diff 82920d6 -- hy3dpaint/`, the model's mechanics pointed at its methods, the
+Tests section to `CLAUDE.md`; `CLAUDE.md`: § The public tree, the tests, the stale step-15 line fixed. Every README path
+exists; scan clean (one hit, `step 40,000`, a training step). PASS.
 
 ### 22. Final checks; `release` and the parent follow (needs Dongchen's review, then his go)
 

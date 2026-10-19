@@ -19,7 +19,7 @@ the parent's gitlink.
 |---|---|---|
 | jupiter | `outputs/mvpaint_74k_alpha_thumb_agentic` | `outputs/mvpaint_alpha_thumb_lightgenbench_v1` |
 | data | 74k v2 agentic | LightgenBench: 36,426 / 200 / 200 |
-| config | `cfgs/lightgen-emission-74k-alpha-thumb-agentic-fir-xg.yaml` (= the run's `config.yaml`, converted) | the release template, filled |
+| config | `cfgs/lightgen-emission-74k-alpha-thumb-agentic-fir-xg.yaml` (= the run's `config.yaml`, converted) | `cfgs/hunyuan-paint-emission.yaml`, filled (named `lightgen-emission-release-alpha-thumb.yaml` when it ran) |
 | scored | `ckpts/troughs/trough-step=00050000.ckpt` | `ckpts/troughs/trough-step=00040000.ckpt` |
 
 Both: 4 × H100 80 GB, global batch 16, LR 7e-5, 50,000 steps, 24-channel `conv_in`, thumbnail
@@ -27,9 +27,22 @@ reference. Checkpoints are 17.9 GB and pickle no class of ours: the contract is 
 keys and the `target:` strings of stored configs, which name `hunyuanpaintpbr.model_emission.HunyuanPaintEmission`
 and `src.data.dataloader.lightgen_emission_loader.LightgenEmissionDataset`, modules this code no longer
 has. `hy3dpaint/scripts/convert_config.py` is the one place for every such conversion (configs, and
-checkpoints with `--ckpt`, which ours do not need): `predict_emission_views.py` and the training check
-call it. The parent's `evaluation/mvpaint_bridge/predict_emission_views.py` still imports the old loader
-path, so it runs only against `lightgen` until step 15 moves it.
+checkpoints with `--ckpt`, which ours do not need): `predict_emission_views.py`, the training check and
+the parent's `evaluation/mvpaint_bridge/predict_emission_views.py` call it.
+
+## The public tree
+
+The published repository (D16 in `REFACTOR_TODO.md`) is this branch without its internal paths:
+`REFACTOR_TODO.md`, `CLAUDE.md`, `hy3dpaint/scripts/internal/` (the checks, the cluster launchers, the
+env record, the tests) and `hy3dpaint/cfgs/lightgen-emission-74k-alpha-thumb-agentic-fir-xg.yaml` (the
+paper run's config). Everything else is public: `README.md`, comments and `--help` texts name only
+public files and no cluster, user, account, jupiter path, parent-repo path or plan step (the scan in
+`REFACTOR_TODO.md` § Part 2). A change lands here first, is checked here, then goes out as a new export
+commit (step 23).
+
+Tests (CPU): `python -m pytest scripts/internal/tests/ -q` from `hy3dpaint/`: the loader, the example
+lists, the re-layout, the predictor's seed and reference rules, the converter. The loader's first test
+reads its fixture shapes from jupiter.
 
 ## Environments
 

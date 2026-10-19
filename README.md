@@ -27,9 +27,9 @@ model, texture demo, Gradio app and API (all kept here, unchanged), is
   zero-initializing the new ones.
 - **Output.** One generation stream, the emission, instead of upstream's two (albedo,
   metallic-roughness). Its learned token and its attention weights start from upstream's albedo
-  stream. The model is `HunyuanPaint` in `hy3dpaint/hunyuanpaintpbr/unet/model.py`; its docstring
-  explains the mechanics (the UNet rebuilt from this package after the pipeline loads, the one
-  material slot, the frozen leftover parameters).
+  stream. The model is `HunyuanPaint` in `hy3dpaint/hunyuanpaintpbr/unet/model.py`; its methods
+  explain the mechanics (`_swap_in_fork_unet`: the UNet rebuilt from this package after the pipeline
+  loads; `_retarget_material_slots`: the one material slot; `_freeze_unreachable_parameters`).
 - **Reference image.** The object's thumbnail (the TexVerse preview image shipped with LightgenBench),
   through upstream's reference path and its augmentation during training.
 - **Sampling.** The model's `validation_step`: 30 Euler-ancestral steps, no classifier-free guidance.
@@ -37,13 +37,13 @@ model, texture demo, Gradio app and API (all kept here, unchanged), is
 - **Data.** The loader (`TextureDataset` in `hy3dpaint/src/data/dataloader/objaverse_loader_forTexturePBR.py`)
   reads six fixed views per shape. Upstream's PBR training path does not run in this repository.
 
-The upstream files we changed are edited in place; `main` is upstream's code, so
+The upstream files we changed are edited in place, so
 
 ```bash
-git fetch origin main && git diff origin/main -- hy3dpaint/
+git diff 82920d6 -- hy3dpaint/
 ```
 
-shows every change.
+(upstream's commit this code starts from) shows every change.
 
 ## Setup
 
@@ -134,19 +134,9 @@ between an RTX 4090 and an RTX PRO 6000). A 24 GB GPU is enough, at about 4 s pe
 4090. Projecting the views onto the UV map and the benchmark's scoring are not part of this
 repository.
 
-A config written by this code before its October 2026 refactor (such as our runs') names older class
-paths. `predict_emission_views.py` converts it on load; to train from one, convert it first with
+A config written by an earlier version of this code (such as our runs') names older class paths. `predict_emission_views.py` converts it on load; to train from one, convert it first with
 `python scripts/convert_config.py <old.yaml> <new.yaml>`. Our checkpoints need no conversion (they hold
 weights and optimizer state, no class of this code); `scripts/convert_config.py --ckpt` checks one.
-
-## Tests
-
-```bash
-python -m pytest scripts/internal/tests/ -q
-```
-
-The loader, the example-list builder, the release re-layout, the inference script's seed and
-reference-image rules, and the config and checkpoint conversion (CPU only).
 
 ## Repository
 
@@ -155,10 +145,9 @@ reference-image rules, and the config and checkpoint conversion (CPU only).
 | `train.py`, `predict_emission_views.py` | training; inference on chosen shapes |
 | `hunyuanpaintpbr/` | the model (`unet/model.py`) and the UNet (`unet/modules.py`), upstream's files edited in place |
 | `src/data/dataloader/objaverse_loader_forTexturePBR.py` | the loader, upstream's file with our class |
-| `cfgs/` | the release config template; the paper run's config (`-fir-xg`) |
+| `cfgs/hunyuan-paint-emission.yaml` | the training config template (upstream's `hunyuan-paint-pbr.yaml` beside it) |
 | `scripts/lightgenbench/` | `unpack_hf_dataset.sh`: the Hugging Face dataset to the data folder and config; what it runs (re-layout, example lists) |
-| `scripts/convert_config.py` | configs and checkpoints from the code before its refactor to the current names |
-| `scripts/internal/` | our cluster launchers, regression checks and tests; not needed to use the code |
+| `scripts/convert_config.py` | configs and checkpoints of earlier versions of this code to the current class paths |
 
 Upstream's shape model (`hy3dshape/`), texture demo (`demo.py`, `textureGenPipeline.py`), Gradio app
 and API are unchanged.
