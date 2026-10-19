@@ -38,7 +38,7 @@ same for `plans/2026-09-16-hunyuan3d-paint-refactor.md`); use them as a source o
 - [x] 19. Part 2: the release config named by role
 - [x] 20. Part 2: comments and docstrings at upstream's density, no internal names
 - [x] 21. Part 2: the README for the public tree; internal notes in `CLAUDE.md`
-- [ ] 22. Part 2: final checks; `release` and the parent follow (needs Dongchen's review, then his go)
+- [x] 22. Part 2: final checks; `release` and the parent follow (needs Dongchen's review, then his go)
 - [ ] 23. Part 2: the public repository (per D16; needs Dongchen's go)
 
 A Result names the commit its checks ran on. Two rebases moved some of those off the branch: on
@@ -1152,10 +1152,10 @@ exists; scan clean (one hit, `step 40,000`, a training step). PASS.
 
 ### 22. Final checks; `release` and the parent follow (needs Dongchen's review, then his go)
 
-- [ ] The full GPU set on the head, as in step 15: both gates on every shape through the fork's
+- [x] The full GPU set on the head, as in step 15: both gates on every shape through the fork's
   predictor, IDENTICAL; the training check, fresh and resume, IDENTICAL; the tests.
-- [ ] `release` fast-forwards to the worktree branch; pushed on Dongchen's go.
-- [ ] In the parent, one path-limited commit: the gitlink, and every parent reference to a path that
+- [x] `release` fast-forwards to the worktree branch; pushed on Dongchen's go.
+- [x] In the parent, one path-limited commit: the gitlink, and every parent reference to a path that
   moved (search again; known: `AGENTS.md:67`, `.claude/rules/hunyuan3d.md`,
   `docs/baselines/hunyuan3d-paint.md:35-40`, whose `:38-40` still put the launchers under
   `scripts/lightgen/` since step 5b, and the entry in `docs/status/refactor.md`). Dated records keep their
@@ -1165,7 +1165,9 @@ Checks: the parent predictor's smoke run (2 shapes of each run, as in step 15) a
 
 **Instructions:**
 
-**Result:**
+**Result:** Checks on `a0a7b53`: both gates, every shape, through the fork's predictor IDENTICAL (paper 204 = A40 30, Max-Q
+28, Blackwell SE 28, L40S 96, RTX 4090 22; release 200 likewise), fresh and resume IDENTICAL (Blackwell SE). `release`
+pushed; the parent commit (local; its `main` carries other sessions' unpushed commits) is in `../docs/status/refactor.md`. PASS.
 
 ### 23. The public repository (per D16; needs Dongchen's go to create it and to make it public)
 
