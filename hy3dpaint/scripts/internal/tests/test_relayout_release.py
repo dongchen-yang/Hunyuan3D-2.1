@@ -1,14 +1,14 @@
 """Tests for relayout_release.py: the release layout becomes the fixture layout, and the
 result passes make_74k_jsons.py's own A7 checks (the gate the job runs next).
 
-    python -m pytest scripts/lightgen/test_relayout_release.py -q
+    python -m pytest scripts/internal/tests/test_relayout_release.py -q
 """
 
 import os
 import subprocess
 import sys
 
-HERE = os.path.dirname(os.path.abspath(__file__))
+HERE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "lightgen")
 sys.path.insert(0, HERE)
 
 import make_74k_jsons as gate  # noqa: E402

@@ -14,7 +14,7 @@ consumed by Task 7's config and Task 8's staging.
 
 Run (from the Hunyuan3D-Emission submodule root, hunyuanpaint conda env):
     conda run -n hunyuanpaint bash -c \
-        'export PYTHONNOUSERSITE=1; python hy3dpaint/scripts/lightgen/smoke_load_pretrained.py'
+        'export PYTHONNOUSERSITE=1; python hy3dpaint/scripts/internal/smoke_load_pretrained.py'
 
 PYTHONNOUSERSITE=1 is MANDATORY, not optional, for this specific workstation: it has a
 stray ~/.local/lib/python3.10/site-packages (leftover from an old bare `pip install

@@ -16,7 +16,7 @@ import pytest
 from PIL import Image
 
 # Add parent directory to path for imports
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))))
 
 from src.data.dataloader import objaverse_loader_forTexturePBR as loader
 from src.data.dataloader.objaverse_loader_forTexturePBR import TextureDataset
@@ -266,4 +266,4 @@ if __name__ == "__main__":
     test_corrupt_example_is_substituted()
     test_systemic_corruption_raises()
     print("✓ decode-guard tests passed")
-    print("(thumbnail-reference tests need pytest: python -m pytest scripts/lightgen/test_texture_dataset.py)")
+    print("(thumbnail-reference tests need pytest: python -m pytest scripts/internal/tests/test_texture_dataset.py)")

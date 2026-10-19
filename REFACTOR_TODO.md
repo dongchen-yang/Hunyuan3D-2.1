@@ -33,7 +33,7 @@ same for `plans/2026-09-16-hunyuan3d-paint-refactor.md`); use them as a source o
 - [x] 14b. The old class paths go; one converter for configs and checkpoints (Dongchen 2026-10-17, at review)
 - [x] 15. Branch `release` (per D11) and the rename to `Hunyuan3D-Emission/` (per D4) (needs Dongchen's review of the branch, then his go)
 - [ ] 16. Cut-over (per D8); runs after step 22, onto Part 2's final tree
-- [ ] 17. Part 2: the internal-only files under `scripts/internal/` (moves only)
+- [x] 17. Part 2: the internal-only files under `scripts/internal/` (moves only)
 - [ ] 18. Part 2: the public data scripts in `scripts/lightgenbench/`
 - [ ] 19. Part 2: the release config named by role
 - [ ] 20. Part 2: comments and docstrings at upstream's density, no internal names
@@ -1031,10 +1031,10 @@ and step 22 runs the full GPU set once, on the head.
 
 ### 17. The internal-only files under `scripts/internal/` (moves only)
 
-- [ ] `hy3dpaint/scripts/lightgen/{env_setup.sh, smoke_load_pretrained.py, make_val_subset.py}` →
+- [x] `hy3dpaint/scripts/lightgen/{env_setup.sh, smoke_load_pretrained.py, make_val_subset.py}` →
   `hy3dpaint/scripts/internal/`; the five tests and `pilot10_local.json` →
   `hy3dpaint/scripts/internal/tests/` (D17), with their imports and fixture path.
-- [ ] References follow in the same commit: `env_setup.sh:16,139`, `smoke_load_pretrained.py:17`,
+- [x] References follow in the same commit: `env_setup.sh:16,139`, `smoke_load_pretrained.py:17`,
   `stage_alliance.sh:123` (the tests it runs), `CLAUDE.md:50`, the README's test command (`:145`; the
   section moves to `CLAUDE.md` at step 21).
 
@@ -1043,7 +1043,9 @@ Checks: the tests from the new path, all 32 with no skip (on the workstation, wh
 
 **Instructions:**
 
-**Result:**
+**Result:** Three scripts to `scripts/internal/`, the five tests and their fixture list to `scripts/internal/tests/`;
+paths fixed in the tests, `env_setup.sh`, `smoke_load_pretrained.py`, `stage_alliance.sh`, `CLAUDE.md`, the README.
+Tests 32 of 32, no skip (workstation); `bash -n` clean; no GPU check (moves only). PASS.
 
 ### 18. The public data scripts in `scripts/lightgenbench/`
 

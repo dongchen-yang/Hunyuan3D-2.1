@@ -1,7 +1,7 @@
 """Tests for scripts/convert_config.py: the old class paths of configs and checkpoints are converted, every
 other byte kept, and every class path the repository's configs name resolves.
 
-    python -m pytest scripts/lightgen/test_convert_config.py -q
+    python -m pytest scripts/internal/tests/test_convert_config.py -q
 """
 
 import glob
@@ -14,7 +14,7 @@ import types
 import pytest
 import torch
 
-HY3DPAINT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+HY3DPAINT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", ".."))
 sys.path.insert(0, os.path.join(HY3DPAINT, "scripts"))
 sys.path.insert(0, HY3DPAINT)
 

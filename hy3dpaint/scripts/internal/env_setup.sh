@@ -13,7 +13,7 @@
 #
 # Usage:
 #   cd Hunyuan3D-Emission
-#   bash hy3dpaint/scripts/lightgen/env_setup.sh
+#   bash hy3dpaint/scripts/internal/env_setup.sh
 #
 set -euo pipefail
 
@@ -116,7 +116,7 @@ conda run -n hunyuanpaint bash -c \
 
 # ---------------------------------------------------------------------------
 # Step 4: install pytest.
-# Needed for submodule tests (hy3dpaint/scripts/lightgen/test_*.py) to run under
+# Needed for submodule tests (hy3dpaint/scripts/internal/tests/test_*.py) to run under
 # pytest rather than standalone, enabling proper skip semantics and pytest fixture support.
 conda run -n hunyuanpaint bash -c \
     'pip install pytest' \
@@ -136,7 +136,7 @@ conda run -n hunyuanpaint bash -c \
 # Step 5: smoke test -- strict-load the pretrained paint-pbr snapshot through the
 # custom pipeline. Downloads a multi-GB HF snapshot on first run; let it finish.
 conda run -n hunyuanpaint bash -c \
-    'export PYTHONNOUSERSITE=1; python hy3dpaint/scripts/lightgen/smoke_load_pretrained.py' \
+    'export PYTHONNOUSERSITE=1; python hy3dpaint/scripts/internal/smoke_load_pretrained.py' \
     2>&1 | tee "log/${TS}-hunyuanpaint-smoke.log"
 
 echo "Done. See log/${TS}-hunyuanpaint-{torch,env,pytest,wandb,smoke}.log for the full record."

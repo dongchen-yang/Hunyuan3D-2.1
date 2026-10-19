@@ -47,7 +47,7 @@ python train.py --base <cfg> --name <name> --logdir logs/ --gpus 0,1,2,3      # 
 bash scripts/internal/submit_release.sh                                        # the release recipe on Alliance (see below)
 python predict_emission_views.py --config <run>/configs/project.yaml --ckpt <ckpt> \
     --examples_json <json> --thumbnail_dir <thumbs> --out <out> [--snapshot <dir>] [--seeds N]
-python -m pytest scripts/lightgen/ -q
+python -m pytest scripts/internal/tests/ -q
 ```
 
 The release launchers check out and require branch `release` (`submit_release.sh:94`,

@@ -3,7 +3,7 @@ parent repository's, the training config decides the reference image, and the pa
 predicted views in camera order. Whole-model equality with the parent predictor is the gate's job
 (scripts/internal/gate/gate.sh, GATE_ENTRY=fork).
 
-    python -m pytest scripts/lightgen/test_predict_emission_views.py -q
+    python -m pytest scripts/internal/tests/test_predict_emission_views.py -q
 """
 
 import os
@@ -13,7 +13,7 @@ import pytest
 import torch
 from omegaconf import OmegaConf
 
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..")))
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "..")))
 
 import predict_emission_views as pev  # noqa: E402
 

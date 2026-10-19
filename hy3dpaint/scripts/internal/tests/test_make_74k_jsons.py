@@ -11,7 +11,7 @@ import tempfile
 import numpy as np
 from PIL import Image
 
-SCRIPT = os.path.join(os.path.dirname(__file__), "make_74k_jsons.py")
+SCRIPT = os.path.join(os.path.dirname(__file__), "..", "..", "lightgen", "make_74k_jsons.py")
 SUFFIXES = ("albedo", "emission", "mr", "alpha", "normal", "pos")
 
 
