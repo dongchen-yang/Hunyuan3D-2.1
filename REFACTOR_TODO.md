@@ -39,7 +39,7 @@ same for `plans/2026-09-16-hunyuan3d-paint-refactor.md`); use them as a source o
 - [x] 20. Part 2: comments and docstrings at upstream's density, no internal names
 - [x] 21. Part 2: the README for the public tree; internal notes in `CLAUDE.md`
 - [x] 22. Part 2: final checks; `release` and the parent follow (needs Dongchen's review, then his go)
-- [ ] 23. Part 2: the public repository (per D16; needs Dongchen's go)
+- [x] 23. Part 2: the public repository: dropped (Dongchen 2026-10-19); the fork, renamed `dongchen-yang/Hunyuan3D-Emission`, is the code's home
 
 A Result names the commit its checks ran on. Two rebases moved some of those off the branch: on
 2026-10-12 (the Results of steps 12-14 and the review fixes squashed in) and on 2026-10-17 (the loader
@@ -355,6 +355,9 @@ recommended (D16's repository is created at step 23, which waits for his go):
   upstream's repo only, `../data_processing/data_preparation/hf_README.md:172`). The alternative is
   TEXGen-Emission's way: the cut on a branch of the fork (its `release` kept the 254 commits of `main`'s
   history) and the fork's default branch switched to it.
+  Dongchen 2026-10-19, after a trial: keep the fork ("lets just keep using the fork it wont hurt"); the
+  fork is renamed `dongchen-yang/Hunyuan3D-Emission` on GitHub (the old URL redirects), and the trial
+  non-fork repository of that name was deleted.
 - [x] D17 Tests in the public tree. Recommended: none, as in upstream and in TEXGen-Emission's release.
   They move to `scripts/internal/tests/`: one compares against the parent's `seedutil.py`, and one needs
   the jupiter mount (`test_texture_dataset.py:41`). Alternative: the other CPU tests under
@@ -1195,7 +1198,9 @@ branch moves to it.
 
 **Instructions:**
 
-**Result:**
+**Result:** Dropped (Dongchen 2026-10-19). A trial private repository (upstream's history plus one commit of the
+public tree) passed the fresh-clone checks (unpack on the slice; 12 of 12 views identical to the 4090 baseline) and was
+deleted; the fork, renamed `dongchen-yang/Hunyuan3D-Emission`, stays the code's home.
 
 ## Later, only if wanted (behavior changes, one step each)
 
