@@ -962,14 +962,11 @@ class UNet2p5DConditionModel(torch.nn.Module):
         if "cache" not in cached_condition:
             cached_condition["cache"] = {}
 
-        # lightgen: conv_in channel assignment is POSITIONAL -- each condition's channel offset is
-        # just its rank in this concat, so a missing condition silently slides every later one
-        # onto the wrong (pretrained) channels rather than failing. Guard the invariant before
-        # any of it runs. Entirely inert upstream: neither PBR key is ever set there.
+        # Channel offsets are positional (each condition's rank in the concat below), so a missing
+        # condition would shift the later ones. Upstream never sets the PBR keys.
         _PBR_STACK = ("embeds_albedo", "embeds_mr", "embeds_alpha")
         if any(k in cached_condition for k in _PBR_STACK):
-            # The stack is a PREFIX rule: each key may only be present if every key before
-            # it is too, because each one's channel offset is just its rank in the concat.
+            # A key may be present only if every key before it is.
             present = [k in cached_condition for k in _PBR_STACK]
             if present != sorted(present, reverse=True):
                 raise RuntimeError(
@@ -994,15 +991,9 @@ class UNet2p5DConditionModel(torch.nn.Module):
             sample.append(cached_condition["embeds_normal"].unsqueeze(1).repeat(1, N_pbr, 1, 1, 1, 1))
         if "embeds_position" in cached_condition:
             sample.append(cached_condition["embeds_position"].unsqueeze(1).repeat(1, N_pbr, 1, 1, 1, 1))
-        # lightgen: PBR latents enter the SAME channel-concat path as the geometry conditions.
-        # Order is load-bearing: the pretrained conv_in owns channels [noisy 4 | normal 4 |
-        # position 4]; the lightgen conv_in expansion (12 -> 24) zero-inits 12-15 for albedo,
-        # 16-19 for mr and 20-23 for alpha, so they must append in exactly that order, all
-        # after position. `alpha` is per-texel glTF opacity, added for conditioning parity with
-        # TEXGen's 13ch variant and TRELLIS.2's / SegviGen's PBR latent, which carry it already;
-        # it is APPENDED at the end rather than inserted next to mr precisely so that the
-        # channels the 20-channel run learned keep their meaning.
-        # All three branches are no-ops for every upstream caller (no PBR key is ever set there).
+        # The PBR latents follow the geometry maps on conv_in: [noisy 0-3 | normal 4-7 | position 8-11
+        # | albedo 12-15 | mr 16-19 | alpha 20-23]. train.py widens the pretrained 12 channels with
+        # zeros; alpha comes last so that a 20-channel model's channels keep their meaning.
         for _key in _PBR_STACK:
             if _key in cached_condition:
                 sample.append(cached_condition[_key].unsqueeze(1).repeat(1, N_pbr, 1, 1, 1, 1))

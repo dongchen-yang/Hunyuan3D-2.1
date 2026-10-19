@@ -46,50 +46,13 @@ def extract_into_tensor(a, t, x_shape):
 
 
 class HunyuanPaint(pl.LightningModule):
-    """lightgen: pbr->emission (multiview), our model edited into upstream's HunyuanPaint in place (refactor
-        step 8b; configs from before the refactor name it `hunyuanpaintpbr.model_emission.HunyuanPaintEmission`,
-        which scripts/convert_config.py maps here). Adapted per the 2026-07-30 lightgen spec (revised).
+    """Emission model: one generation stream, the emission views, conditioned on the normal and
+    position maps and on the albedo, metallic-roughness and alpha latents, which are concatenated
+    onto conv_in the way upstream concatenates the geometry maps. One reference image; the
+    emission token and attention slot start from albedo's.
 
-    Design (user-decided 2026-07-30): SINGLE generation stream. GT albedo + metallic-
-    roughness latents are channel-concatenated onto the geometry conditioning (normal +
-    CCM) -- the exact mechanism upstream uses for geometry -- and the denoised/supervised
-    output is the emission multiview alone (pbr_settings=["emission"], learned token
-    warm-started from the pretrained albedo token). Single reference image (the frontal
-    albedo render or the TexVerse thumbnail: the loader's `ref_source`); upstream's dual-ref
-    consistency loss dropped. No teacher-forcing, no per-slot timestep mixing.
-
-    Three mechanics in here are non-obvious and are the reason this file exists at all:
-
-    1. THE UNET CLASS SWAP. `DiffusionPipeline.from_pretrained(<snapshot>, custom_pipeline=
-       ./hunyuanpaintpbr)` does NOT build `pipe.unet` from this package. The snapshot's
-       `model_index.json` declares the unet component as `["modules", "UNet2p5DConditionModel"]`,
-       which makes diffusers load `<snapshot>/unet/modules.py` as a dynamic module
-       (`diffusers_modules.local.modules`). That bundled copy has no knowledge of the
-       `embeds_albedo` / `embeds_mr` concat this design depends on, so it would build a
-       12-channel input stack and hand it to the expanded conv_in (24 channels, 20 without alpha) -- a loud shape error on
-       the first step, not a silent wrong-answer. So after the pipeline loads we throw that unet
-       away and rebuild it from THIS package's `UNet2p5DConditionModel.from_pretrained` (same
-       weights, same strict 12-channel load) -- see `_swap_in_fork_unet`.
-
-    2. ONE MATERIAL SLOT. Upstream runs two generation slots (albedo, mr) through every
-       attention block. Emission needs exactly one. `_retarget_material_slots` sets N_pbr=1
-       everywhere and points the per-material attention processors at the pretrained
-       *albedo* projections, so the emission slot inherits albedo's attention weights the
-       same way its learned text token does.
-
-    3. THE LEFTOVER MATERIAL PARAMETERS. With one slot, every `to_{q,k,v,out}_mr` / `to_v_mr` /
-       `learned_text_clip_mr` parameter -- plus `learned_text_clip_albedo`, superseded by the
-       emission token -- becomes unreachable. Upstream's `set_learned_parameters` marks anything
-       named `*albedo*`/`*mr*` trainable, which would hand the optimizer ~74.5M parameters that
-       can never receive a gradient, a hard error under `DDPStrategy(find_unused_parameters=
-       False)`. `_freeze_unreachable_parameters` freezes them; the smoke test asserts that the
-       set of gradient-less trainable parameters is then empty.
-
-    DO NOT sample from this model with `HunyuanPaintPipeline.__call__`. That path prepares only
-    `images_normal` / `images_position` into latents and replicates only those for classifier-free
-    guidance, so it would feed a 12-channel stack to the expanded conv_in and (if that were
-    patched) mis-size the guidance batch. `validation_step` below is the reference sampling loop
-    for this model; any inference tooling should follow it or extend the pipeline first.
+    Sample with `validation_step`, not `HunyuanPaintPipeline.__call__`: the pipeline prepares only
+    the geometry conditions, so conv_in would get a 12-channel stack.
     """
 
     #: the generation slot this model produces (drives `prepare_batch_data` and the learned token)
@@ -123,9 +86,9 @@ class HunyuanPaint(pl.LightningModule):
             with_normal_map: Flag indicating whether normal maps are used
             with_position_map: Flag indicating whether position maps are used
             pbr_settings: List of PBR materials to generate (e.g., albedo, metallic-roughness)
-            val_num_inference_steps: lightgen: sampling steps of validation_step (LIGHTGEN_VAL_STEPS overrides)
-            gradient_checkpointing: lightgen: checkpoint the main unet's activations
-            use_alpha: lightgen: the glTF opacity map is a condition (conv_in channels 20-23)
+            val_num_inference_steps: Sampling steps of validation_step (LIGHTGEN_VAL_STEPS overrides)
+            gradient_checkpointing: Flag indicating whether the main unet checkpoints its activations
+            use_alpha: Flag indicating whether the glTF opacity map is a condition (conv_in channels 20-23)
             **kwargs: Additional keyword arguments
         """
         super(HunyuanPaint, self).__init__()
@@ -180,20 +143,11 @@ class HunyuanPaint(pl.LightningModule):
 
         self.validation_step_outputs = []
 
-        # lightgen: the emission model. Upstream's build above strict-loads the pretrained
-        # ["albedo", "mr"] checkpoint; the switch to a single emission slot happens afterwards, on
-        # top of the loaded weights.
-        # Whether the per-texel glTF opacity map is a condition (conv_in channels 20-23).
-        # True is the current contract -- it is what gives this baseline the same input as
-        # TEXGen's 13ch variant, TRELLIS.2 and SegviGen. The flag exists so the archived
-        # 20-channel checkpoint (`step=00045000`, the "without alpha" eval row) stays loadable
-        # for re-scoring without checking out an older commit; set it false ONLY together with
-        # noise_in_channels 20 and the dataset's own use_alpha=false. Mismatches are caught per
-        # batch by `_assert_condition_channel_layout`, which checks the real conv_in width
-        # rather than trusting these three flags to agree.
+        # The emission slot, built on top of the pretrained ["albedo", "mr"] weights loaded above.
+        # use_alpha false goes with noise_in_channels 20 and the dataset's use_alpha false;
+        # _assert_condition_channel_layout checks them against the real conv_in width.
         self.use_alpha = use_alpha
 
-        # LIGHTGEN_VAL_STEPS lets the smoke test cut the sampling loop short without a config edit.
         self.val_num_inference_steps = int(os.environ.get("LIGHTGEN_VAL_STEPS", val_num_inference_steps))
 
         self.pbr_settings = [self.EMISSION_TOKEN]
@@ -203,26 +157,11 @@ class HunyuanPaint(pl.LightningModule):
         self._add_emission_token()
         self._retarget_material_slots()
 
-        # Re-run the freeze recipe: it was applied above to the unet we just
-        # discarded, and the emission token did not exist yet when it ran.
+        # Run again: the first call set up the replaced unet, before the emission token existed.
         self.pipeline.set_learned_parameters()
         self.num_frozen_unreachable_params = self._freeze_unreachable_parameters()
 
-        # A full 512^2 / 6-view / batch-1 step does not fit in 24 GB without this (measured:
-        # OOM without, 17.4 GiB peak with, on an RTX 4090).
-        #
-        # This checkpoints the MAIN unet only. Note that `unet_dual`'s reference pass is NOT
-        # graph-free, despite every `unet_dual.*` parameter being frozen: its
-        # `encoder_hidden_states_ref` is `learned_text_clip_ref`, which the inherited
-        # `set_learned_parameters` leaves trainable (the name contains neither "attn1" nor
-        # "unet_dual"). That one leaf makes the dual pass require grad, so its activations are
-        # retained. The smoke test's "no trainable parameter is gradient-less" assertion is the
-        # direct evidence -- `learned_text_clip_ref` does receive a gradient.
-        #
-        # Two further levers exist if the reference pass ever needs to be cheaper, neither
-        # applied here (venus has the headroom, and both change what trains):
-        #   * `self.unet.unet_dual.enable_gradient_checkpointing()` -- keeps the token trainable;
-        #   * freezing `learned_text_clip_ref` -- then the dual pass really is graph-free.
+        # Main unet only; a 512x512, 6-view, batch-1 step needs it to fit in 24 GB.
         if gradient_checkpointing:
             self.unet.unet.enable_gradient_checkpointing()
 
@@ -399,13 +338,11 @@ class HunyuanPaint(pl.LightningModule):
             - extract_into_tensor(self.sqrt_one_minus_alphas_cumprod, t, x.shape) * x
         )
 
-    # ------------------------------------------------------------------ build
-
     def _swap_in_fork_unet(self, stable_diffusion_config):
-        """Replace the snapshot-bundled `UNet2p5DConditionModel` with this package's class.
+        """Rebuild the unet with this package's `UNet2p5DConditionModel` (same weights, strict load).
 
-        Same directory, same weights, same `strict=True` load -- only the *code* changes,
-        which is the entire point (see module docstring, item 1).
+        The snapshot's model_index.json makes diffusers build it from the snapshot's own copy of
+        modules.py, which lacks the albedo, mr and alpha concat.
         """
         snapshot = str(stable_diffusion_config["pretrained_model_name_or_path"])
         unet_dir = os.path.join(snapshot, "unet")
@@ -420,21 +357,16 @@ class HunyuanPaint(pl.LightningModule):
                     f"needs adapting too."
                 )
 
-        # Drop the snapshot-class unet before building the replacement, so only one full
-        # copy of a ~1.9B-parameter fp32 model is resident at a time.
+        # Free the old unet first: one copy of the ~1.9B parameters at a time.
         del self.unet
         self.pipeline.unet = None
         gc.collect()
 
         fork_unet = UNet2p5DConditionModel.from_pretrained(unet_dir)
-        # `UNet2p5DConditionModel.from_pretrained` builds the wrapper with no schedulers;
-        # `HunyuanPaint` gives the wrapper it builds both, so match that.
+        # from_pretrained builds the wrapper without schedulers.
         fork_unet.train_sched = self.train_scheduler
         fork_unet.val_sched = self.pipeline.scheduler
-        # `register_modules`, not plain assignment: `DiffusionPipeline.__setattr__` only
-        # recomputes the (library, class) pair in `pipeline.config` when the existing entry is
-        # non-null, and the `= None` above nulled it -- so a plain assignment here would leave
-        # `config["unet"] == (None, None)` and a later `save_pretrained` would emit that.
+        # register_modules, not assignment: after `= None`, assignment leaves config["unet"] = (None, None).
         self.pipeline.register_modules(unet=fork_unet)
         self.unet = fork_unet
 
@@ -448,12 +380,8 @@ class HunyuanPaint(pl.LightningModule):
             )
 
     def _add_emission_token(self):
-        """Register `learned_text_clip_emission`, warm-started from the pretrained albedo token.
-
-        Registered on the inner `UNet2DConditionModel` (not the 2.5D wrapper) so it sits
-        beside `learned_text_clip_{albedo,mr,ref}` under the `unet.unet.` state-dict prefix
-        that `train.py`'s `resume_from` path expects.
-        """
+        """Register `learned_text_clip_emission` on the inner unet, beside the albedo, mr and ref
+        tokens, warm-started from the albedo token."""
         inner = self.unet.unet
         if not hasattr(inner, f"learned_text_clip_{self.EMISSION_TOKEN}"):
             warm_start = getattr(inner, f"learned_text_clip_{self.ATTENTION_SLOT}")
@@ -463,21 +391,14 @@ class HunyuanPaint(pl.LightningModule):
             )
 
     def _retarget_material_slots(self):
-        """Collapse the two upstream material slots down to one emission slot.
+        """Collapse upstream's two material slots to one emission slot.
 
-        Three different `pbr_setting` attributes are read for two different reasons:
-          * the 2.5D wrapper's  -- read by `HunyuanPaintPipeline` to look up
-            `learned_text_clip_<token>` and to size the latent batch, so it must say "emission";
-          * each transformer block's -- only `len()` is read (that's N_pbr), so the name is
-            cosmetic but is kept as "emission" for readability;
-          * each attention processor's -- the names SELECT weights (`to_q` vs `to_q_mr`), so
-            these must name a slot the pretrained checkpoint actually has. "albedo" points the
-            emission slot at the pretrained albedo projections, matching how its learned text
-            token is warm-started.
+        The wrapper and the blocks name the generated slot; the attention processors' names
+        select weights (`to_q` vs `to_q_mr`), so they name albedo, whose projections the emission
+        slot uses.
         """
         self.unet.pbr_setting = [self.EMISSION_TOKEN]
-        # Only the main unet is retargeted: `unet_dual`'s blocks were built with pbr_setting=None
-        # (N_pbr=1 already) and carry no material-specific projections.
+        # unet_dual's blocks have one slot already and no material projections.
         for block in self.unet.unet.modules():
             if not isinstance(block, Basic2p5DTransformerBlock):
                 continue
@@ -495,18 +416,9 @@ class HunyuanPaint(pl.LightningModule):
                     processor.n_pbr_tokens = 1
 
     def _freeze_unreachable_parameters(self):
-        """Freeze trainable parameters that a single emission slot can never reach.
-
-        Two families, both left trainable by the inherited `set_learned_parameters` purely
-        because their names contain "mr" or "albedo":
-          * every `to_{q,k,v,out}_mr` / `to_v_mr` projection plus `learned_text_clip_mr` --
-            the second material slot no longer exists (~74.4M elements);
-          * `learned_text_clip_albedo` -- the emission slot carries its own token, and
-            albedo's is read exactly once, as the warm start (78,848 elements).
-
-        Left trainable these receive no gradient, which `DDPStrategy(find_unused_parameters=
-        False)` -- what train.py uses -- treats as a hard error. Returns the number of frozen
-        elements; 0 would mean the naming assumption broke, not that there was nothing to do.
+        """Freeze what one emission slot never reaches: the `*_mr` projections and the mr and albedo
+        tokens. Left trainable they get no gradient, which DDP with find_unused_parameters=False
+        rejects. Returns the number of frozen elements.
         """
         unreachable_suffixes = (f"learned_text_clip_{self.ATTENTION_SLOT}",)
         frozen = 0
@@ -518,30 +430,23 @@ class HunyuanPaint(pl.LightningModule):
                 frozen += param.numel()
         return frozen
 
-    # ------------------------------------------------------------- conditioning
-
     def _resize01(self, images):
         return v2.functional.resize(
             images.to(self.device), self.view_size, interpolation=3, antialias=True
         ).clamp(0, 1)
 
     def _encode_conditions(self, batch):
-        """Encode everything except the emission target.
-
-        `prepare_batch_data` reads `images_emission` into `target_imgs` because
-        `self.pbr_settings == ["emission"]`; albedo and mr are conditions here, not targets,
-        so they are encoded separately and ride in on the channel-concat path.
-        """
+        """Encode the conditions; albedo and mr are conditions here, emission the only target."""
         cond_imgs, _, target_imgs, normal_imgs, position_imgs = self.prepare_batch_data(batch)
 
+        # Each encode draws from the global RNG (VAE sampling): this order (albedo, mr, alpha,
+        # normal, position, reference) is part of every seeded result.
         cached = {
             "embeds_albedo": self.encode_images(self._resize01(batch["images_albedo"])),
             "embeds_mr": self.encode_images(self._resize01(batch["images_mr"])),
         }
         if self.use_alpha:
-            # Per-texel glTF opacity. Encoded exactly like the other PBR conditions (the map
-            # stores the scalar replicated across RGB, so the 3-channel VAE takes it as-is) and
-            # appended LAST in the conv_in stack -- see modules.py's `_PBR_STACK`.
+            # glTF opacity, stored as RGB; last in the conv_in stack (modules.py).
             cached["embeds_alpha"] = self.encode_images(self._resize01(batch["images_alpha"]))
         if normal_imgs is not None:
             cached["embeds_normal"] = self.encode_images(normal_imgs[0])
@@ -561,30 +466,9 @@ class HunyuanPaint(pl.LightningModule):
         return target_imgs, cached
 
     def _assert_condition_channel_layout(self, cached):
-        """Fail loudly if the conv_in channel stack would come out mis-aligned.
-
-        Each condition's conv_in channel offset is nothing but its position in the concat
-        inside `UNet2p5DConditionModel.forward`, so an absent key does not remove a condition --
-        it slides every later one down four channels. Dropping albedo would feed mr into the
-        channels the model learned as albedo; dropping a geometry map would feed albedo into
-        pretrained normal/position channels. Neither raises on its own: the widths still work
-        out if the conv_in was expanded to match.
-
-        Two separate failures are checked:
-
-        1. a HOLE in the stack -- a key missing from the middle, which silently shifts every
-           later condition onto channels that mean something else;
-        2. a WIDTH disagreement between the stack this model is about to build and the conv_in
-           it will feed. `use_alpha` (here), the dataset's own `use_alpha` and the config's
-           `noise_in_channels` are three knobs that must agree, and nothing else forces them to.
-           Checking the real `conv_in.in_channels` catches every combination, including the
-           quiet one: noise_in_channels 24 with use_alpha false, which trains happily with four
-           permanently-zero input channels and is not recoverable after the fact.
-
-        `modules.py` carries the same offset check (it is the code that owns the offsets, and
-        the pipeline can reach it without passing through here). This one fires earlier, with
-        the conditioning still in hand. A raise rather than `assert` so `python -O` cannot
-        drop it.
+        """Raise if the conv_in stack would be misaligned: a missing condition shifts every later one
+        onto other channels, and the stack's width must equal conv_in's (use_alpha, the dataset's
+        use_alpha and noise_in_channels have to agree).
         """
         expected = ["embeds_normal", "embeds_position", "embeds_albedo", "embeds_mr"]
         if self.use_alpha:
@@ -602,7 +486,7 @@ class HunyuanPaint(pl.LightningModule):
                 "conv_in channels the model has no width for."
             )
 
-        # +1 for the noisy emission latent itself, which occupies channels 0-3.
+        # +1: the noisy latent, channels 0-3.
         want = 4 * (len(expected) + 1)
         got = self.unet.unet.conv_in.in_channels
         if want != got:
@@ -619,25 +503,14 @@ class HunyuanPaint(pl.LightningModule):
                 + (" | alpha 20-23]" if self.use_alpha else "]"))
 
     def _apply_condition_dropout(self, cached, B):
-        """Upstream's classifier-free-guidance dropout recipe, extended to albedo/mr/alpha.
+        """Upstream's condition dropout with the same draws, extended to albedo, mr and alpha.
 
-        Draw structure follows upstream's `training_step` (tag pre-refactor) exactly -- independent per-sample
-        draws for the map embeddings, a separate draw for `position_maps`, a separate draw for
-        DINO, and the same three-way mva/ref draw -- because inference-time guidance in
-        `HunyuanPaintPipeline` relies on that having been trained.
-
-        One deliberate divergence: upstream guards the embedding drop with
-        `if "normal_imgs" in cached_condition` / `if "position_imgs" in cached_condition`, but
-        the keys it actually sets are `embeds_normal` / `embeds_position` -- so upstream never
-        drops those two at all. The keys are corrected here, which means normal/position
-        conditioning really is dropped, as the lightgen spec calls for.
+        Upstream tests the keys "normal_imgs" and "position_imgs", which it never sets, so it never
+        drops normal and position; here the keys are the ones set.
         """
         for b in range(B):
             if np.random.rand() < self.drop_cond_prob:
-                # Zeroing (not removing) is what `_assert_condition_channel_layout` and
-                # modules.py's `_PBR_STACK` prefix rule require -- the key must stay so the
-                # positional channel offsets hold. alpha drops with the same draw as the rest
-                # of the stack, so guidance sees a coherent all-conditions-off sample.
+                # Zero, never remove: the channel offsets are positional.
                 for key in ("embeds_normal", "embeds_position", "embeds_albedo", "embeds_mr",
                             "embeds_alpha"):
                     if key in cached:
@@ -657,8 +530,6 @@ class HunyuanPaint(pl.LightningModule):
                 cached["mva_scale"] = 0.0
             else:
                 cached["ref_scale"] = 0.0
-
-    # ------------------------------------------------------------------- steps
 
     def training_step(self, batch, batch_idx):
         target_imgs, cached = self._encode_conditions(batch)
@@ -682,8 +553,7 @@ class HunyuanPaint(pl.LightningModule):
         v_pred = rearrange(v_pred, "(b p n) c h w -> b p n c h w", p=1, n=N)[:, 0]
         v_target = rearrange(self.get_v(flat, noise, t_flat), "(b n) c h w -> b n c h w", b=B)
 
-        # fp32 loss: under bf16 autocast `v_pred` comes back bf16, and rounding the fp32 target
-        # down to match it would quantise the regression target itself.
+        # fp32: under bf16 autocast v_pred is bf16.
         loss = torch.nn.functional.mse_loss(v_pred.float(), v_target.float())
         self.log_dict({"train/emission_loss": loss}, prog_bar=True, logger=True, on_step=True, on_epoch=True)
         self.log("global_step", self.global_step, prog_bar=True, logger=True, on_step=True, on_epoch=False)
@@ -701,15 +571,13 @@ class HunyuanPaint(pl.LightningModule):
 
     @torch.no_grad()
     def validation_step(self, batch, batch_idx):
-        """Standard single-stream sampling; conditions ride along at every step."""
+        """Samples the emission views (Euler ancestral, no guidance) and stores the GT/prediction panel."""
         target_imgs, cached = self._encode_conditions(batch)
         gt_emission = target_imgs[self.EMISSION_TOKEN]  # (B, N, 3, H, W)
         B, N = gt_emission.shape[:2]
         h, w = cached["embeds_albedo"].shape[-2:]
 
-        # A shared cache dict makes the reference (unet_dual) pass, the DINO projection and the
-        # RoPE voxel indices run once for the whole loop instead of once per step -- the same
-        # trick `HunyuanPaintPipeline.denoise` uses.
+        # One cache for the loop, as in HunyuanPaintPipeline.denoise: the reference pass runs once.
         cached["cache"] = {}
 
         sched = EulerAncestralDiscreteScheduler.from_config(
@@ -731,12 +599,7 @@ class HunyuanPaint(pl.LightningModule):
         pred = (img * 0.5 + 0.5).clamp(0, 1)  # (B*N, 3, H, W)
         gt = rearrange(gt_emission.to(pred.device, pred.dtype), "b n c h w -> (b n) c h w")
 
-        # A monitorable scalar so ModelCheckpoint can select on sampling quality
-        # (monitor: 'val/emission_mse', mode: min). Note this is NOT the training objective --
-        # training regresses v in latent space, this is pixel MSE between the fully sampled
-        # emission views and the GT views, both in [0, 1]. fp32 for the same reason the training
-        # loss is fp32: under bf16 autocast `pred` comes back bf16. sync_dist=True averages the
-        # per-rank shards under DDP, so the monitored value is the same on every rank.
+        # Pixel MSE of the sampled views against GT in [0, 1], averaged over ranks.
         val_mse = torch.nn.functional.mse_loss(pred.float(), gt.float())
         self.log(
             "val/emission_mse",
@@ -767,21 +630,9 @@ class HunyuanPaint(pl.LightningModule):
         # 3. Save visualization with step-numbered filename
         # 4. Clear memory for next validation cycle
 
-        # lightgen: a RESUMED run gets one validation with ZERO batches before training
-        # restarts -- pytorch-lightning 1.9 calls _run_validation() from the training epoch
-        # loop's on_advance_end() while the restored val dataloader still yields nothing
-        # ("Validation: 0it"). Upstream then cats an empty list and the whole run dies:
-        #   ValueError: torch.cat(): expected a non-empty list of Tensors
-        # That is what killed segments 2, 3 and 4 of campaign 20260816-013134 within minutes
-        # each, after segment 1 had banked 26,150 steps -- a chain cannot survive its own
-        # first hand-off without this guard.
-        #
-        # Returning early is collective-safe HERE, and only because the emptiness is
-        # all-or-nothing: the val DistributedSampler pads to an equal per-rank length, so
-        # either every rank has batches or none does (all four ranks raised this identically).
-        # If that ever stops holding, this needs an all_reduce on a has-output flag instead --
-        # a partial early return would deadlock the all_gather below, which is worse than the
-        # crash it replaces.
+        # A resumed run starts with one validation of zero batches (pytorch-lightning 1.9), and
+        # torch.cat fails on an empty list. The sampler pads every rank to the same length, so all
+        # ranks return here together and the all_gather below cannot hang.
         if not self.validation_step_outputs:
             rank_zero_info("validation produced no batches (expected once on resume) -- "
                            "skipping the grid for this cycle")
