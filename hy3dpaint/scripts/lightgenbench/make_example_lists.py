@@ -1,53 +1,28 @@
-"""Build the venus-side train / val64 example JSONs for the 74k pbr->emission run -- and prove,
-before a 57-hour job is submitted, that the training set contains nothing we will evaluate on.
+"""Build the train and val64 example lists (JSON lists of shape directories) from the split lists,
+and check, before writing anything, that training sees no validation or test shape.
 
-Why this does not list the staged directory: the staged root holds *all* of train + val + test,
-so a directory-enumeration train JSON would train on 100% of the evaluation set and every number
-the run produced afterwards would be worthless. This script is sha-driven -- the committed v2 split
-lists are the only source of membership -- and it refuses to write anything unless the split
-algebra checks out.
+Membership comes from the split lists only, never from listing the data directory, which holds all
+three splits. Checks (any failure aborts before a file is written):
 
-Assertions (all hard; any failure aborts before a file is written):
+  A0  every list entry is a bare 32-hex uuid (a path could point outside the data directory)
+  A1  each list is duplicate-free; train, val and test are disjoint
+  A2  val64 is a subset of val
+  A3  the train shapes missing from the data directory are exactly --allow_missing
+  A4  the train list's length is --expect_train, which must equal train minus --allow_missing
+  A5  train is disjoint from val64
+  A6  train is disjoint from val and test
+  A7  every listed directory holds the 36 render_tex PNGs, transforms.json and render_cond/000.png,
+      each a regular nonempty file, and, with --thumbnail_dir, <thumbnail_dir>/<uuid>.png (names and
+      sizes only; the PNGs are not decoded)
 
-  A0  every entry of every input list is a bare 32-hex-char sha. Without this, a list entry that
-      is an absolute path or contains ".." would join to a directory *outside* the staged root --
-      it would compare unequal to every val/test sha and so sail through A1/A5/A6 while pointing
-      the trainer straight at an eval shape.
-  A1  each input sha list is duplicate-free, and train/val/test are mutually disjoint
-  A2  val64 is a subset of the full val split
-  A3  the train shas missing from the staged root are *exactly* the expected-missing set
-      (--allow_missing), so a half-finished rsync cannot be mistaken for the one known
-      unrenderable shape
-  A4  len(train json) == --expect_train, AND --expect_train == len(train list) - len(allow_missing).
-      The second half is what stops the two knobs being fudged together: without it, "everything
-      that is missing is allowed, and I expected exactly what survived" is self-consistent for any
-      amount of missing data.
-  A5  train json is disjoint from val64
-  A6  train json is disjoint from the full val split and the full test split
-  A7  every directory named in either JSON exists under the root and holds the full 37-PNG +
-      transforms.json payload, each as a regular file of nonzero size; and, when
-      --thumbnail_dir is given, <thumbnail_dir>/<sha>.png is a regular nonzero-size file for
-      every listed sha (the thumbnail-reference runs -- spec 2026-08-23 -- fail here, at JSON
-      build, rather than at the first training batch)
-
-A5 and A6 are implied by A0+A1+A2 as the code stands (train_kept is a subset of the train list).
-They are kept because they check the *constructed output* rather than the inputs, so they stay
-load-bearing if the way train_kept is built ever changes. A7 certifies structure, not pixels --
-the decode sweep that verifies every PNG actually decodes is a separate step, run against the
-staged root before this script (see the phase-2 task-4 report).
-
-Run it on the node that will train, so A3/A7 look at the real staged filesystem. The release run's
-call (scripts/internal/train_release_body.sh; --thumbnail_dir only for thumbnail-reference runs):
+scripts/lightgenbench/unpack_hf_dataset.sh runs it:
 
     python scripts/lightgenbench/make_example_lists.py \
-        --train_shas  $STAGE/shas/train.txt \
-        --val_shas    $STAGE/shas/val.txt \
-        --test_shas   $STAGE/shas/test.txt \
-        --val64_shas  scripts/lightgenbench/val64_release_shas.txt \
-        --fixture_root $STAGE/release \
-        --thumbnail_dir $STAGE/thumbs \
-        --out_train   $STAGE/release_train.json \
-        --out_val64   $STAGE/release_val64.json \
+        --train_shas <data_dir>/splits/train.txt --val_shas <data_dir>/splits/val.txt \
+        --test_shas <data_dir>/splits/test.txt \
+        --val64_shas scripts/lightgenbench/val64_release_shas.txt \
+        --fixture_root <data_dir>/shapes --thumbnail_dir <data_dir>/thumbs \
+        --out_train <data_dir>/release_train.json --out_val64 <data_dir>/release_val64.json \
         --expect_train <the train split's size>
 """
 
@@ -62,12 +37,8 @@ import sys
 SHA_RE = re.compile(r"^[0-9a-f]{32}$")
 VIEWS = range(6)
 SUFFIXES = ("albedo", "emission", "mr", "alpha", "normal", "pos")
-# What one complete shape dir must contain: 36 render_tex PNGs + transforms.json, and render_cond.
-# `alpha` joined the fixture for conditioning parity with the other baselines; a pre-alpha shape
-# holds only 30 and is REJECTED here on purpose -- silently listing it would start a 57-hour run
-# whose dataloader dies on the first batch (or, worse, one that trains on a different condition
-# set than the config claims). Upgrade the fixture with the parent repo's
-# data_processing/archive/multiview_render_pipeline_74k/append_alpha_views.py first.
+# One complete shape: 36 render_tex PNGs and transforms.json, and render_cond/000.png. A shape
+# without the alpha views (30 PNGs) is rejected.
 EXPECT_TEX = {f"{v:03d}_{s}.png" for v in VIEWS for s in SUFFIXES} | {"transforms.json"}
 EXPECT_COND = {"000.png"}
 
@@ -93,8 +64,7 @@ def read_shas(path):
         fail(f"{path}: duplicate shas (e.g. {dupes[:5]})")
     bad = [s for s in shas if not SHA_RE.match(s)]
     if bad:
-        # A0. An entry like "/cs/.../val_sha" or "../val_sha" would os.path.join out of the
-        # staged root while still comparing unequal to every val/test sha.
+        # A0: an absolute or ".." entry would join to a path outside the data directory.
         fail(f"A0: {path}: {len(bad)} entr(y|ies) are not bare 32-hex shas, e.g. {bad[:3]}")
     return shas
 
@@ -110,8 +80,7 @@ def _regular_nonempty(dirpath, expected):
         return f"{dirpath} missing {len(missing)} entr(y|ies), e.g. {sorted(missing)[:3]}"
     for name in expected:
         e = entries[name]
-        # is_file() alone would accept a directory named 000_albedo.png via a symlink chain;
-        # follow_symlinks=True is the default and is what the loader will do when it opens them.
+        # is_file() follows symlinks, as the loader's open() does.
         if not e.is_file():
             return f"{os.path.join(dirpath, name)} is not a regular file"
         if e.stat().st_size == 0:
@@ -120,23 +89,15 @@ def _regular_nonempty(dirpath, expected):
 
 
 def dir_payload_ok(d):
-    """Return None if the shape dir is complete, else a short reason string.
-
-    Structural only: names, file-ness and nonzero size. Whether the bytes actually decode is
-    established by the separate PNG decode sweep -- doing it here would make the launch gate a
-    2.2-million-file decode.
-    """
+    """Return None if the shape dir is complete, else a short reason string. Names, file type and
+    size only; the PNGs are not decoded."""
     return (_regular_nonempty(os.path.join(d, "render_tex"), EXPECT_TEX)
             or _regular_nonempty(os.path.join(d, "render_cond"), EXPECT_COND))
 
 
 def thumbnail_ok(thumbnail_dir, d):
-    """None if <thumbnail_dir>/<sha>.png is a regular nonzero-size file, else a reason string.
-
-    A direct stat, not _regular_nonempty: that helper scandirs the whole directory per call,
-    and the thumbnail store holds 80,735 files -- 36k x scandir(80k) is not a gate, it is a
-    stall. stat() follows symlinks, as the loader's open() will.
-    """
+    """None if <thumbnail_dir>/<sha>.png is a regular nonzero-size file, else a reason string. One
+    stat per shape (a directory scan per shape would be slow on a large thumbnail directory)."""
     p = os.path.join(thumbnail_dir, os.path.basename(d.rstrip("/")) + ".png")
     try:
         st = os.stat(p)

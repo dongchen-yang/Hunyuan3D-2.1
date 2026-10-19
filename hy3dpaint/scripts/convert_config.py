@@ -1,24 +1,23 @@
-"""Convert a config or a checkpoint written by the code before the October 2026 refactor to the current names.
+"""Convert a config or a checkpoint written by earlier versions of this code to the current class paths.
 
     python scripts/convert_config.py <old.yaml> <new.yaml>              (<new> may be <old>)
     python scripts/convert_config.py --ckpt <old.ckpt> <new.ckpt>
 
-This file holds every such conversion; predict_emission_views.py and the training check use it. That
-code named the model and the loader by two modules this repository no longer has:
+This file holds every such conversion; predict_emission_views.py uses it. Earlier versions named the
+model and the loader by two modules this repository no longer has:
 
     hunyuanpaintpbr.model_emission.HunyuanPaintEmission
         -> hunyuanpaintpbr.unet.model.HunyuanPaint
     src.data.dataloader.lightgen_emission_loader.LightgenEmissionDataset
         -> src.data.dataloader.objaverse_loader_forTexturePBR.TextureDataset
 
-They are the same classes, folded into upstream's files. A config (our runs' config.yaml, a run's
-configs/project.yaml) names them in `target:` lines; only those lines change and every other byte is
-kept. predict_emission_views.py converts its --config on load; train.py needs a converted file.
+They are the same classes, now in upstream's files. A config names them in `target:` lines; only
+those lines change and every other byte is kept. predict_emission_views.py converts its --config on
+load; train.py needs a converted file.
 
 A checkpoint is converted without loading it: the class paths its pickle names are rewritten and every
-tensor is copied as stored. Our checkpoints (the paper and release runs') pickle no class of this
-repository, only weights and optimizer state, so they load as they are; --ckpt then says so and writes
-nothing.
+tensor is copied as stored. Our runs' checkpoints pickle no class of this repository, only weights and
+optimizer state, so they load as they are; --ckpt then says so and writes nothing.
 """
 import argparse
 import os

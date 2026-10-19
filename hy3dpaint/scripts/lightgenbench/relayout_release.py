@@ -5,29 +5,25 @@ The released dataset (Hugging Face 3dlg-hcvc/LightgenBench) ships one directory 
     <root>/<uuid>/multiview/00N_{albedo,mr,normal,pos,emission,alpha}.png + transforms.json
     <root>/<uuid>/thumbnail.png
 
-The loader (`TextureDataset`) and `make_example_lists.py` were written against the render fixture:
+The loader (`TextureDataset`) and `make_example_lists.py` read another layout:
 
     <root>/<sha>/render_tex/<the same 37 files>
     <root>/<sha>/render_cond/000.png
     <thumbnail_dir>/<sha>.png
 
-The files are the same (the release hard-links `render_tex/` as `multiview/`), only the names
-differ, so this renames and links in place instead of touching the loader:
+The files are the same, only the names differ, so this renames and links in place:
 
     multiview/                -> render_tex/                  os.rename
     render_tex/001_albedo.png -> render_cond/000.png          hard link
     thumbnail.png             -> <thumbs_out>/<uuid>.png      hard link
 
-`render_cond/000.png` is what it was in the fixture, a copy of `render_tex/001_albedo.png`.
-A `ref_source: thumbnail` run never reads it; `make_example_lists.py`'s A7 gate requires it.
+`render_cond/000.png` is the frontal albedo view; a `ref_source: thumbnail` run never reads it, but
+`make_example_lists.py` checks for it. It renames in place, so run it on your own unpacked copy. It is
+idempotent, and it exits 1 if any listed shape is missing a piece.
 
-Run it on node-local storage inside the job, on the tree the tars were just unpacked into.
-Never run it on jupiter's `dataset_release`: those files are hard links into `dataset_73k`.
-It is idempotent, and it exits 1 if any listed shape is missing a piece.
-
-Usage:
-    python relayout_release.py --root $STAGE/release --thumbs_out $STAGE/thumbs \
-        --shas train_shas.txt val_shas.txt
+Usage (scripts/lightgenbench/unpack_hf_dataset.sh runs it):
+    python relayout_release.py --root <data_dir>/shapes --thumbs_out <data_dir>/thumbs \
+        --shas <data_dir>/splits/train.txt <data_dir>/splits/val.txt <data_dir>/splits/test.txt
 """
 
 import argparse

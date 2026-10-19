@@ -36,7 +36,7 @@ same for `plans/2026-09-16-hunyuan3d-paint-refactor.md`); use them as a source o
 - [x] 17. Part 2: the internal-only files under `scripts/internal/` (moves only)
 - [x] 18. Part 2: the public data scripts in `scripts/lightgenbench/`
 - [x] 19. Part 2: the release config named by role
-- [ ] 20. Part 2: comments and docstrings at upstream's density, no internal names
+- [x] 20. Part 2: comments and docstrings at upstream's density, no internal names
 - [ ] 21. Part 2: the README for the public tree; internal notes in `CLAUDE.md`
 - [ ] 22. Part 2: final checks; `release` and the parent follow (needs Dongchen's review, then his go)
 - [ ] 23. Part 2: the public repository (per D16; needs Dongchen's go)
@@ -1100,20 +1100,20 @@ One commit per group: (a) `hunyuanpaintpbr/unet/{model,modules,attn_processor}.p
 `src/data/objaverse_hunyuan.py`; (c) `train.py`; (d) `predict_emission_views.py`, `convert_config.py`,
 the `scripts/lightgenbench/` files, the release config, `.gitignore`.
 
-- [ ] A comment says what the code cannot say: a reason, an invariant, a unit. History (dates,
+- [x] A comment says what the code cannot say: a reason, an invariant, a unit. History (dates,
   campaigns, job ids, measurements, who decided) goes, since git, `CLAUDE.md` and this plan keep it.
   Internal names go (§ Part 2 scan); examples: `train.py:320,383,441-442`, `unet/model.py:50,223,624`,
   the loader `:75,82,134`, `make_example_lists.py:1`, the release config `:4-7,51-53,133,145`.
-- [ ] One short comment each stays for: the RNG draw order (Keep stable 6), the conv_in layout
+- [x] One short comment each stays for: the RNG draw order (Keep stable 6), the conv_in layout
   (described once, at `modules.py`'s guard, and referred to elsewhere), why the unet is swapped, why our
   condition dropout differs from upstream's.
-- [ ] Target: our lines at about the comment share upstream has in the same file (comment and docstring
+- [x] Target: our lines at about the comment share upstream has in the same file (comment and docstring
   lines over non-blank lines; `main`: `unet/model.py` 0.27, the loader 0.15, `train.py` 0.10; `release`
   today: 0.43, 0.47, 0.21).
-- [ ] References to the parent repository (`predict_emission_views.py:25-27,47`) say what that code does,
+- [x] References to the parent repository (`predict_emission_views.py:25-27,47`) say what that code does,
   not where it is.
 
-- [ ] Module docstrings that argparse reads keep a useful first line (`convert_config.py:105` takes
+- [x] Module docstrings that argparse reads keep a useful first line (`convert_config.py:105` takes
   `__doc__.splitlines()[0]`; `predict_emission_views.py:208`, `relayout_release.py:72` and
   `make_example_lists.py:161` print it whole).
 
@@ -1124,7 +1124,9 @@ clean on the group's files.
 
 **Instructions:**
 
-**Result:**
+**Result:** `4bf8f7a` (unet), `304f196` (loader), `d537cc7` (`train.py`), `172cc2e` (new files, config): AST unchanged
+without docstrings, config dict and value lines unchanged, `--help` ok, tests 32 of 32, scan clean but the README.
+Share now (upstream): model 0.30 (0.29), loader 0.28 (0.16), `train.py` 0.14 (0.12); error messages kept. PASS.
 
 ### 21. The README for the public tree; internal notes in `CLAUDE.md`
 

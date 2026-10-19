@@ -15,16 +15,13 @@ checkpoint trained with (train.py saves it in the run's `configs/`). The output 
     <out_dir>/manifest.json                              what was loaded and the seed of each shape
 
 in the camera order of the shape's `render_tex/` views. The sampling is the model's own
-`validation_step` (30 Euler-ancestral steps, no guidance, bf16 autocast); a copy of that loop would
-drift from the model. Each shape's noise is seeded from its uuid and the seed index, not from its place
-in the list. On one GPU type, a rerun writes the same bytes; another GPU type gives other bytes (a mean
-of 0.1/255 between an RTX 4090 and an RTX PRO 6000 Blackwell). A 24 GB GPU is enough.
+`validation_step` (30 Euler-ancestral steps, no guidance, bf16 autocast). Each shape's noise is seeded
+from its uuid and the seed index, not from its place in the list. On one GPU type a rerun writes the
+same bytes; another GPU type gives slightly different ones. A 24 GB GPU is enough.
 
-A config written before the October 2026 refactor (such as our runs') names older class paths; it is
-converted on load (scripts/convert_config.py). This is the parent LightGen repository's
-`evaluation/mvpaint_bridge/predict_emission_views.py` with its repository plumbing taken out; the two
-write the same bytes. Turning the views into a UV emission map
-and scoring it are the parent repository's (`evaluation/mvpaint_bridge/bridge_views_to_uv.py`).
+A config that names the class paths of earlier versions of this code is converted on load
+(scripts/convert_config.py). Projecting the views onto the UV map and scoring them is done by the
+LightGen evaluation code.
 """
 import argparse
 import hashlib
@@ -42,11 +39,10 @@ REF_SOURCES = ("frontal_albedo", "thumbnail")
 
 
 def sample_seed(sha: str, seed: int) -> int:
-    """Per-shape RNG seed for `(sha, seed)`. Order-, batch- and skip-independent.
+    """Per-shape RNG seed for `(sha, seed)`, independent of order, batching and skipped shapes.
 
-    A verbatim copy of the parent repository's `evaluation/newdata_eval/seedutil.py`, which every
-    LightGen evaluation lane uses; keep the copies byte-identical. The full unsigned 64-bit prefix of
-    the digest, unmasked: masking it would give another RNG stream for the same seed index.
+    The LightGen evaluation seeds every baseline with this function. The full unsigned 64-bit prefix
+    of the digest: masking it would give another RNG stream for the same seed index.
     """
     return int.from_bytes(hashlib.sha256(f"{sha}:{seed}".encode()).digest()[:8], "big")
 
@@ -172,7 +168,7 @@ def _split_panel(panel, num_view):
 def sample_shape(model, batch, rng_seed):
     """One shape through the model's own `validation_step`, under the global seed `rng_seed`.
 
-    The seed is global because the noise is drawn inside the model with no generator: the five
+    The seed is global because the noise is drawn inside the model with no generator: the six
     conditioning-latent `posterior.sample()` calls, the initial noise and the 30 ancestral steps.
     """
     import torch
