@@ -32,7 +32,7 @@ same for `plans/2026-09-16-hunyuan3d-paint-refactor.md`); use them as a source o
 - [x] 14. Docs
 - [x] 14b. The old class paths go; one converter for configs and checkpoints (Dongchen 2026-10-17, at review)
 - [x] 15. Branch `release` (per D11) and the rename to `Hunyuan3D-Emission/` (per D4) (needs Dongchen's review of the branch, then his go)
-- [ ] 16. Cut-over (per D8); runs after step 22, onto Part 2's final tree
+- [x] 16. Cut-over (per D8); runs after step 22, onto Part 2's final tree (xg4090 open: the host is down)
 - [x] 17. Part 2: the internal-only files under `scripts/internal/` (moves only)
 - [x] 18. Part 2: the public data scripts in `scripts/lightgenbench/`
 - [x] 19. Part 2: the release config named by role
@@ -978,17 +978,19 @@ PASS. The commits, the push of `release` and the parent commit are in the parent
 Runs after step 22: steps 18-19 move the paths that the stage and the launchers use, so the copies move
 only once, onto the final tree.
 
-- [ ] Solar: rebuild jupiter `trellis2_bw/eval_inputs/solar_hunyuan_stage/Hunyuan3DPaint-emissive.tar`
+- [x] Solar: rebuild jupiter `trellis2_bw/eval_inputs/solar_hunyuan_stage/Hunyuan3DPaint-emissive.tar`
   from the merged tree (it unpacks to the directory name), update `CFG_REL` in
   `hunyuan_worker.sbatch`, and delete the nodes' `BOOTSTRAP_OK` and `.fork_ok` so they unpack it
   again.
 - [ ] xg4090: restage `lightgen_sweep_stage/Hunyuan3DPaint-emissive` (`hosts.json:13`).
-- [ ] The Alliance clones (`Hunyuan3D-2.1-emissive` on fir, killarney, rorqual, nibi): check out
+- [x] The Alliance clones (`Hunyuan3D-2.1-emissive` on fir, killarney, rorqual, nibi): check out
   `release` (the release launchers' `.commit` pinning keeps past campaigns on their commits).
 
 **Instructions:**
 
-**Result:**
+**Result:** Solar: `Hunyuan3D-Emission.tar` (`release` `aa608a0`'s `hy3dpaint/`) on the stage beside the old tar, its predictor
+and seedutil refreshed, the worker repointed, the stale `BOOTSTRAP_OK` removed; smoke job 314115 (L40S): 6 of 6 views
+identical to the gate baseline. Alliance clones on `release` `aa608a0`. xg4090 not done: the host does not resolve.
 
 ## Part 2: a clean public repository (planned 2026-10-18)
 
