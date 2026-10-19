@@ -5,7 +5,8 @@ Turn our Hunyuan3D-2.1 fork into a clean Hunyuan3D-Emission (display name `pbr�
 the paper and release runs, our changes as edits on upstream's original modules, generic entry points
 for LightgenBench users. Modeled on TEXGen-Emission's finished plan (`../TEXGen-Emission/REFACTOR_TODO.md`)
 and TRELLIS2's (`../TRELLIS2/.claude/worktrees/trellis2-emission-refactor/REFACTOR_TODO.md`); the rules
-below are TEXGen's unless a line says otherwise.
+below are TEXGen's unless a line says otherwise. Part 2 (steps 17-23, planned 2026-10-18) turns the
+result into a clean public repository that reads like upstream's: § Part 2.
 
 A September attempt (a trim into `deprecated/2026-09-16/`, no renames, a deterministic-mode inference
 gate) was specified and approved on 2026-09-17, then called off on 2026-09-19 before any file moved.
@@ -31,8 +32,14 @@ same for `plans/2026-09-16-hunyuan3d-paint-refactor.md`); use them as a source o
 - [x] 14. Docs
 - [x] 14b. The old class paths go; one converter for configs and checkpoints (Dongchen 2026-10-17, at review)
 - [x] 15. Branch `release` (per D11) and the rename to `Hunyuan3D-Emission/` (per D4) (needs Dongchen's review of the branch, then his go)
-- [ ] 16. Cut-over (per D8)
-- [ ] 17. Release cut: our internal files leave the published tree (per D10)
+- [ ] 16. Cut-over (per D8); runs after step 22, onto Part 2's final tree
+- [ ] 17. Part 2: the internal-only files under `scripts/internal/` (moves only)
+- [ ] 18. Part 2: the public data scripts in `scripts/lightgenbench/`
+- [ ] 19. Part 2: the release config named by role
+- [ ] 20. Part 2: comments and docstrings at upstream's density, no internal names
+- [ ] 21. Part 2: the README for the public tree; internal notes in `CLAUDE.md`
+- [ ] 22. Part 2: final checks; `release` and the parent follow (needs Dongchen's review, then his go)
+- [ ] 23. Part 2: the public repository (per D16; needs Dongchen's go)
 
 A Result names the commit its checks ran on. Two rebases moved some of those off the branch: on
 2026-10-12 (the Results of steps 12-14 and the review fixes squashed in) and on 2026-10-17 (the loader
@@ -280,7 +287,7 @@ Carried over from TEXGen:
   `hunyuanpaintpbr.model.HunyuanPaint` does not resolve on `main` either), the dead
   `multiple_devices` branch in `unet/attn_processor.py:692-695`, `CodeSnapshot.get_file_list` in
   `train.py:139-146`, and the upstream methods our folded code does not replace (D13).
-- [ ] D10 (open, decided at step 17) Internal files in the published code. TEXGen's ruling (Dongchen
+- [ ] D10 (superseded by D16, 2026-10-18) Internal files in the published code. TEXGen's ruling (Dongchen
   2026-10-09): the release drops the check tooling, and with it the other internal files. Here
   `scripts/internal/` will hold the gate and our cluster launchers (accounts `rrg-msavva_gpu`,
   `def-msavva_gpu`, `aip-msavva`, `def-msavva`; `$HOME/scratch` defaults; a mail address,
@@ -332,6 +339,31 @@ Open:
   here, a fork-side script that writes the same views (Keep stable 12), gated byte-identical against
   the frozen parent predictor; the parent predictor stays, the bridge stays in the parent, and the
   README says where it is.
+
+For Part 2 (2026-10-18): Dongchen, on reading this plan: "sure lets go 16-22"; D16-D18 taken as
+recommended (D16's repository is created at step 23, which waits for his go):
+
+- [x] D16 Where the clean code goes public. The fork `dongchen-yang/Hunyuan3D-2.1` is already public:
+  it is a GitHub fork of `Tencent-Hunyuan/Hunyuan3D-2.1`, and GitHub does not let a fork change its
+  visibility. Its default branch `main` shows upstream's code, and `lightgen` and `release` can be read by
+  anyone, history included, so a clean tip on `release` would still sit beside them. Recommended: a new
+  repository that is not a fork (owner and name Dongchen's, e.g. `Hunyuan3D-Emission`), created private.
+  Its `main` holds upstream's history up to `82920d6`, then one commit with the public tree (§ Part 2)
+  authored `Dongchen Yang <yangdongchen1@gmail.com>`. Later fixes come as new commits, cut the same way.
+  The fork keeps its role as our internal repository: the parent's submodule, `release` as branch of
+  record, the checks, the launchers. Nothing public links to the fork yet (the dataset card links
+  upstream's repo only, `../data_processing/data_preparation/hf_README.md:172`). The alternative is
+  TEXGen-Emission's way: the cut on a branch of the fork (its `release` kept the 254 commits of `main`'s
+  history) and the fork's default branch switched to it.
+- [x] D17 Tests in the public tree. Recommended: none, as in upstream and in TEXGen-Emission's release.
+  They move to `scripts/internal/tests/`: one compares against the parent's `seedutil.py`, and one needs
+  the jupiter mount (`test_texture_dataset.py:41`). Alternative: the other CPU tests under
+  `hy3dpaint/tests/`.
+- [x] D18 What the fork already shows. Scanned 2026-10-18: neither pushed branch nor its history holds
+  a credential (Hugging Face, GitHub, Overleaf and wandb token patterns, private keys). Readable: Alliance
+  account names and priorities, user names, cluster paths, and a quoted chat line, mostly in the paper
+  config's header. Recommended: leave it. Alternative: detach the fork from the fork network through
+  GitHub, then make it private.
 
 ## Done
 
@@ -943,6 +975,9 @@ PASS. The commits, the push of `release` and the parent commit are in the parent
 
 ### 16. Cut-over (per D8)
 
+Runs after step 22: steps 18-19 move the paths that the stage and the launchers use, so the copies move
+only once, onto the final tree.
+
 - [ ] Solar: rebuild jupiter `trellis2_bw/eval_inputs/solar_hunyuan_stage/Hunyuan3DPaint-emissive.tar`
   from the merged tree (it unpacks to the directory name), update `CFG_REL` in
   `hunyuan_worker.sbatch`, and delete the nodes' `BOOTSTRAP_OK` and `.fork_ok` so they unpack it
@@ -955,14 +990,194 @@ PASS. The commits, the push of `release` and the parent commit are in the parent
 
 **Result:**
 
-### 17. Release cut: our internal files leave the published tree (per D10)
+## Part 2: a clean public repository (planned 2026-10-18)
 
-Runs after step 15's final check, which needs the tooling.
+Dongchen 2026-10-18: "eventually, we want a clean repo like the original repo (Hunyuan3D)". The public
+tree is upstream's `82920d6` plus our edits inside its files and a few files of ours, each named by its
+role. The fork's `release` holds those files byte for byte, plus a short list of internal paths, so the
+public tree is `release` with that list deleted. This replaces the old step 17 (D10, now D16).
 
-- [ ] Tag the last commit that has it (`checks-tooling`), so a later check can restore it.
-- [ ] Per D10: delete `scripts/internal/` (the gate and our cluster launchers) and the doc's section
-  on checking a code change (one line pointing at the tag stays); decide `REFACTOR_TODO.md` and
-  `CLAUDE.md` with it.
+The public tree, against upstream (today `release` adds 38 files and edits 9):
+
+- Edited in place, the same 9: `.gitignore`, `README.md` (the users' doc), `hy3dpaint/README.md`,
+  `hy3dpaint/train.py`, `hunyuanpaintpbr/unet/{model,modules,attn_processor}.py`,
+  `src/data/dataloader/objaverse_loader_forTexturePBR.py`, `src/data/objaverse_hunyuan.py`.
+- Added, 9 files: `README_hunyuan3d.md` (upstream's README, unchanged), `requirements-emission.txt`,
+  `hy3dpaint/cfgs/hunyuan-paint-emission.yaml`, `hy3dpaint/predict_emission_views.py`,
+  `hy3dpaint/scripts/convert_config.py`, `hy3dpaint/scripts/lightgenbench/{unpack_hf_dataset.sh,
+  relayout_release.py, make_example_lists.py, val64_release_shas.txt}`.
+- Internal, on `release` only: `REFACTOR_TODO.md`, `CLAUDE.md`, `hy3dpaint/scripts/internal/`, and the
+  paper run's config `hy3dpaint/cfgs/lightgen-emission-74k-alpha-thumb-agentic-fir-xg.yaml` (Keep stable
+  3; it needs the 74k data, which is not released).
+- The public files name no cluster, user, account, jupiter, parent-repository path, step or decision
+  of this plan, or tag `pre-refactor`. The scan (every hit is read by hand; one that names a training
+  step, such as `step 40,000`, is fine):
+
+```bash
+git diff --name-only main <rev> \
+  | grep -v -E '^(REFACTOR_TODO\.md|CLAUDE\.md|hy3dpaint/scripts/internal/|hy3dpaint/cfgs/lightgen-emission-74k-)' \
+  | xargs git grep -n -I -E 'jupiter|/local-scratch|/localhome|/scratch/|dya78|xya120|msavva|angelx|\b(fir|killarney|rorqual|nibi|narval|tamia|trillium|star2|venus|xg4090|sp4090)\b|[Ss]olar|REFACTOR_TODO|CLAUDE\.md|pre-refactor|\bD[0-9]{1,2}\b|\b[Ss]tep [0-9]+[a-z]?\b|evaluation/|data_processing/|scripts/internal|74k|agentic' <rev> --
+```
+
+Kept as they are: upstream code we do not use (D9, D12); the interfaces of Keep stable 4-8, 11 and 12
+(state-dict keys, the model surface, the RNG order, the loader, `train.py`'s outputs, the `LIGHTGEN_*`
+variables and the wandb project `LightGen`); the behavior changes under Later.
+
+How Part 2 works: as steps 1-15 (one commit per step in the worktree, run back to back, Result at
+most three lines). It starts on Dongchen's go once D16-D18 are answered, and it stops for the parent
+commit, the new repository and any push. Checks follow the change (Dongchen 2026-10-17): moves,
+renames and comments cannot reach the model, so steps 17-21 run only the CPU checks each step lists,
+and step 22 runs the full GPU set once, on the head.
+
+### 17. The internal-only files under `scripts/internal/` (moves only)
+
+- [ ] `hy3dpaint/scripts/lightgen/{env_setup.sh, smoke_load_pretrained.py, make_val_subset.py}` →
+  `hy3dpaint/scripts/internal/`; the five tests and `pilot10_local.json` →
+  `hy3dpaint/scripts/internal/tests/` (D17), with their imports and fixture path.
+- [ ] References follow in the same commit: `env_setup.sh:16,139`, `smoke_load_pretrained.py:17`,
+  `stage_alliance.sh:123` (the tests it runs), `CLAUDE.md:50`, the README's test command (`:145`; the
+  section moves to `CLAUDE.md` at step 21).
+
+Checks: the tests from the new path, all 32 with no skip (on the workstation, which mounts jupiter);
+`bash -n` on every moved or edited shell script.
+
+**Instructions:**
+
+**Result:**
+
+### 18. The public data scripts in `scripts/lightgenbench/`
+
+- [ ] `relayout_release.py`, `val64_release_shas.txt` and `make_74k_jsons.py` move from
+  `scripts/lightgen/` (gone after this) to `scripts/lightgenbench/`, beside `unpack_hf_dataset.sh`.
+  `make_74k_jsons.py` becomes `make_example_lists.py`: it builds the release's lists, and "74k" names
+  the data it was first written for.
+- [ ] Callers follow: `unpack_hf_dataset.sh:17,83,89,91`, `train_release_body.sh:166,171,175`, the
+  tests, the docstrings that name the old paths, `CLAUDE.md`, the README (`:161`).
+
+Checks: the tests; `unpack_hf_dataset.sh` on step 13's slice of the release (redone on this step's
+parent commit first if that output is gone) writes byte-identical lists and config; `submit_release.sh
+--dry-run` with `CLUSTER=<each>` writes the same job files except for the paths. The dry run fetches
+nothing and reads `$LIGHTGEN_MVPAINT_ROOT/Hunyuan3D-2.1-emissive` (`submit_release.sh:45-48,93`). So
+point that root at a scratch directory holding clean checkouts of the commit under test and of its
+parent, check `git rev-parse HEAD` in each, and compare the job files with the date and `COMMIT=` lines
+normalized.
+
+**Instructions:**
+
+**Result:**
+
+### 19. The release config named by role
+
+- [ ] `cfgs/lightgen-emission-release-alpha-thumb.yaml` → `cfgs/hunyuan-paint-emission.yaml`, beside
+  upstream's `hunyuan-paint-pbr.yaml`; the unpack script writes `<data_dir>/hunyuan-paint-emission.yaml`.
+- [ ] Its tokens are named for a user: the snapshot path `__ROOT__/hf_home/hub/models--tencent--Hunyuan3D-2.1/
+  snapshots/<rev>/hunyuan3d-paintpbr-v2-1` (`:55`, the only use of `__ROOT__`) becomes `__SNAPSHOT__`,
+  `__STAGE__` becomes `__DATA_DIR__`, `__NUM_WORKERS__` stays. Both fillers (`unpack_hf_dataset.sh:34,120`,
+  `train_release_body.sh:39,187`) fill the new names.
+- [ ] Changed on purpose (Keep stable 3 and 10, internal callers only): `train.py` names the logdir after
+  the config, so new runs log to `logs/hunyuan-paint-emission-<name>[-$LIGHTGEN_RUN_TS]/`
+  (`train_release_body.sh:223` derives it again; README `:105,124-125`). Past runs keep their names. The
+  parent's `AGENTS.md:67` goes on step 22's list.
+- [ ] `test_convert_config.py:59-60` globs `lightgen-*.yaml` and expects 2: it names both configs
+  explicitly instead, so the public config stays checked.
+
+Checks: each filler's output, loaded with OmegaConf, equals its output on this step's parent commit;
+`--dry-run` job files, made as in step 18, are the same except for the names; the tests.
+
+**Instructions:**
+
+**Result:**
+
+### 20. Comments and docstrings at upstream's density, no internal names
+
+One commit per group: (a) `hunyuanpaintpbr/unet/{model,modules,attn_processor}.py`; (b) the loader and
+`src/data/objaverse_hunyuan.py`; (c) `train.py`; (d) `predict_emission_views.py`, `convert_config.py`,
+the `scripts/lightgenbench/` files, the release config, `.gitignore`.
+
+- [ ] A comment says what the code cannot say: a reason, an invariant, a unit. History (dates,
+  campaigns, job ids, measurements, who decided) goes, since git, `CLAUDE.md` and this plan keep it.
+  Internal names go (§ Part 2 scan); examples: `train.py:320,383,441-442`, `unet/model.py:50,223,624`,
+  the loader `:75,82,134`, `make_example_lists.py:1`, the release config `:4-7,51-53,133,145`.
+- [ ] One short comment each stays for: the RNG draw order (Keep stable 6), the conv_in layout
+  (described once, at `modules.py`'s guard, and referred to elsewhere), why the unet is swapped, why our
+  condition dropout differs from upstream's.
+- [ ] Target: our lines at about the comment share upstream has in the same file (comment and docstring
+  lines over non-blank lines; `main`: `unet/model.py` 0.27, the loader 0.15, `train.py` 0.10; `release`
+  today: 0.43, 0.47, 0.21).
+- [ ] References to the parent repository (`predict_emission_views.py:25-27,47`) say what that code does,
+  not where it is.
+
+- [ ] Module docstrings that argparse reads keep a useful first line (`convert_config.py:105` takes
+  `__doc__.splitlines()[0]`; `predict_emission_views.py:208`, `relayout_release.py:72` and
+  `make_example_lists.py:161` print it whole).
+
+Checks (no GPU: comments cannot reach the model): every changed `.py` file parses to the same AST as
+before once docstrings are removed; every argparse script answers `--help`; the config loads to the
+same dict; each shell script's lines without whole-line comments are unchanged; the tests; the scan is
+clean on the group's files.
+
+**Instructions:**
+
+**Result:**
+
+### 21. The README for the public tree; internal notes in `CLAUDE.md`
+
+- [ ] `README.md` names only public files: the repository table drops `scripts/internal/` and
+  `scripts/lightgen/` and takes the names of steps 18-19; the Tests section and the paper run's config
+  (`:158`) move to `CLAUDE.md`. The release run's recipe and checkpoint choice stay.
+- [ ] The upstream-diff command (`README.md:43`, `git diff origin/main -- hy3dpaint/`) follows D16. In a
+  new repository `main` is ours, so the command becomes `git diff 82920d6 -- hy3dpaint/`; with D16's
+  alternative it stays.
+- [ ] `CLAUDE.md` gains the internal-path list of § Part 2, the cut rule and the test command.
+- [ ] Upstream's attribution, license and citation stay (the README's top and bottom, `LICENSE`,
+  `Notice.txt`, `README_hunyuan3d.md`).
+
+Checks: every path in the README exists in the public tree; its argparse scripts answer `--help`
+(`unpack_hf_dataset.sh` takes none, `:30-31`; steps 18 and 23 run it as documented); the scan is clean
+on the README. Step 23 runs the upstream-diff command in the exported clone.
+
+**Instructions:**
+
+**Result:**
+
+### 22. Final checks; `release` and the parent follow (needs Dongchen's review, then his go)
+
+- [ ] The full GPU set on the head, as in step 15: both gates on every shape through the fork's
+  predictor, IDENTICAL; the training check, fresh and resume, IDENTICAL; the tests.
+- [ ] `release` fast-forwards to the worktree branch; pushed on Dongchen's go.
+- [ ] In the parent, one path-limited commit: the gitlink, and every parent reference to a path that
+  moved (search again; known: `AGENTS.md:67`, `.claude/rules/hunyuan3d.md`,
+  `docs/baselines/hunyuan3d-paint.md:35-40`, whose `:38-40` still put the launchers under
+  `scripts/lightgen/` since step 5b, and the entry in `docs/status/refactor.md`). Dated records keep their
+  names.
+
+Checks: the parent predictor's smoke run (2 shapes of each run, as in step 15) and its tests.
+
+**Instructions:**
+
+**Result:**
+
+### 23. The public repository (per D16; needs Dongchen's go to create it and to make it public)
+
+- [ ] `scripts/internal/export_public.sh <rev> <out>`: a clone of the fork's `main` (upstream at
+  `82920d6`), with the tree of `<rev>` minus the internal list on top, as one commit authored `Dongchen
+  Yang <yangdongchen1@gmail.com>` whose message names `<rev>`. It checks that every kept file equals
+  `<rev>`'s byte for byte (`diff -r`), prints the § Part 2 scan's hits, and refuses on any credential
+  pattern (`hf_…`, `ghp_…`, `github_pat_`, `olp_…`, a wandb key, a private key).
+- [ ] The user's path from a fresh clone of the export, in an empty directory, without the parent or
+  jupiter: the env from `requirements-emission.txt` (`C/envs/reqtest`, step 12); then the README's
+  commands: `unpack_hf_dataset.sh` on step 13's slice, `predict_emission_views.py` on 2 test shapes with
+  the release checkpoint (IDENTICAL to that GPU type's baseline), `train.py` for 20 steps with
+  `WANDB_MODE=offline` on a GPU with at least 48 GB, and the upstream-diff command (it lists the 9
+  edited and 9 added files).
+- [ ] Create the repository private (owner and name per D16) and push `main`; make it public on
+  Dongchen's go. Later: a change lands on the fork's `release` first and is checked there; then comes a
+  new export commit.
+- [ ] Git identity: this workstation has none configured, so all 83 commits on `release` have the author
+  `dya78 <dya78@cs-3dlg-23.cmpt.sfu.ca>`. They stay; the export commit sets its author explicitly.
+
+With D16's alternative, the export commits on a branch of the fork instead, and the fork's default
+branch moves to it.
 
 **Instructions:**
 
@@ -988,3 +1203,4 @@ Runs after step 15's final check, which needs the tooling.
 - Sampling changes (the model trains with condition dropout 0.1 and samples without guidance), any
   retraining, any published number.
 - The paper (read-only).
+- Rewriting the fork's history (Part 2): its commits, messages and author stay as pushed.
