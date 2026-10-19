@@ -176,13 +176,8 @@ if __name__ == "__main__":
     cfg_fname = os.path.split(opt.base)[-1]
     cfg_name = os.path.splitext(cfg_fname)[0]
     exp_name = "-" + opt.name if opt.name != "" else ""
-    # LightGen: optional per-submission run stamp appended to the logdir, so two runs of the same
-    # config do not share a logdir (and therefore do not silently auto-resume each other via the
-    # last.ckpt lookup just below). It comes from the environment -- NOT from datetime.now() here --
-    # because pytorch-lightning 1.9's DDP launcher re-execs train.py once per rank, so an
-    # in-process timestamp would differ between ranks and each rank would write its own logdir.
-    # The sbatch launcher exports LIGHTGEN_RUN_TS=${LIGHTGEN_RUN_TS:-$(date +%Y%m%d-%H%M%S)} once,
-    # before python, so every re-exec inherits the same value. Unset => upstream behaviour.
+    # Optional run stamp, so two runs of one config do not share a logdir (and resume each other).
+    # From the environment: the DDP launcher starts train.py once per rank.
     run_ts = os.environ.get("LIGHTGEN_RUN_TS", "")
     logdir = os.path.join(opt.logdir, cfg_name + exp_name + ("-" + run_ts if run_ts else ""))
 
@@ -314,11 +309,7 @@ if __name__ == "__main__":
     trainer_kwargs = dict()
 
     # logger
-    # LightGen: wandb, not TensorBoard -- all training runs log to the single wandb
-    # project "LightGen" (see AGENTS.md naming conventions). Run name defaults to the
-    # upstream cfg_name+exp_name but is overridable via LIGHTGEN_WANDB_NAME (set by the
-    # sbatch launch script, e.g. "mvpaint_pbr->emission_overfit10_v1"). WANDB_MODE=offline
-    # in the environment routes this to an offline run for later `wandb sync`.
+    # Weights & Biases instead of TensorBoard; WANDB_MODE=offline logs locally.
     default_logger_cfg = {
         "target": "pytorch_lightning.loggers.WandbLogger",
         "params": {
@@ -375,22 +366,9 @@ if __name__ == "__main__":
             },
         },
     }
-    # lightgen: a SECOND, unconditional checkpointer for the LR-cycle troughs.
-    #
-    # The main callback runs save_top_k=3 on val/emission_mse, and ModelCheckpoint decides
-    # BEFORE writing whether a checkpoint would enter the top-k -- a step that would not is
-    # never written at all, not written-then-deleted. So no external watcher can preserve a
-    # specific step: campaign 20260816-013134's step 20,000 simply never existed on disk.
-    #
-    # That matters because val/emission_mse is noise-dominated here (64 shapes through 30
-    # stochastic sampling steps), so the checkpoints it keeps are partly luck, while the ones
-    # actually worth scoring are the LR-cycle troughs -- configure_optimizers uses
-    # warm_up_step=1000 + T_step=9000, i.e. a 10,000-step cosine-with-restarts cycle, and the
-    # trough is the converged end of each. Saving those unconditionally is what lets the final
-    # model be chosen with the real point-sampled evaluator instead of a noisy proxy.
-    #
-    # Opt-in: set lightning.trough_checkpoint.every_n_train_steps in the config. Writes to a
-    # `troughs/` subdirectory so it cannot compete with the main callback's top-k bookkeeping.
+    # Optional second checkpointer that keeps every checkpoint it writes, at the learning-rate
+    # restarts (lightning.trough_checkpoint.every_n_train_steps): the top-k callback never writes a
+    # step it would not keep, and val/emission_mse is too noisy to choose by.
     if "trough_checkpoint" in lightning_config:
         trough_cfg = OmegaConf.merge(
             OmegaConf.create({
@@ -398,7 +376,7 @@ if __name__ == "__main__":
                 "params": {
                     "dirpath": os.path.join(ckptdir, "troughs"),
                     "filename": "trough-{step:08}",
-                    "save_top_k": -1,      # unconditional: no monitor, nothing to lose to
+                    "save_top_k": -1,      # keep every one
                     "save_last": False,    # last.ckpt belongs to the main callback alone
                     "verbose": True,
                 },
@@ -423,35 +401,16 @@ if __name__ == "__main__":
     trainer_kwargs["callbacks"] = [instantiate_from_config(callbacks_cfg[k]) for k in callbacks_cfg]
 
     trainer_kwargs["precision"] = "bf16"
-    # LightGen: upstream's find_unused_parameters=False is kept as the default -- it is the fast
-    # path, and the 2-GPU smoke on the emission model confirmed our freeze pattern (unet_dual
-    # frozen, learned_text_clip_ref trainable) does not leave parameters unused. The escape hatch
-    # exists because that is exactly the failure mode a freeze pattern can produce, and it shows
-    # up only under DDP: set LIGHTGEN_DDP_FIND_UNUSED=1 if a run dies with DDP's "expected to
-    # have finished reduction in the prior iteration" error. It costs a graph traversal per
-    # backward -- measure before leaving it on.
+    # LIGHTGEN_DDP_FIND_UNUSED=1 for a run that stops with DDP's "expected to have finished
+    # reduction in the prior iteration" error; it costs a graph traversal per backward.
     ddp_find_unused = os.environ.get("LIGHTGEN_DDP_FIND_UNUSED", "0") == "1"
     if ddp_find_unused:
         rank_zero_print("++++ DDP find_unused_parameters=True (LIGHTGEN_DDP_FIND_UNUSED=1) ++++")
 
     ddp_kwargs = {"find_unused_parameters": ddp_find_unused}
-    # LightGen: inside an sbatch, lightning 1.9 auto-detects SLURMEnvironment (any job whose name
-    # is not "bash"/"interactive") and then takes the world size from SLURM_NTASKS *regardless of
-    # --gpus*, assuming the ranks were launched by `srun`. Our launch scripts are one Slurm task
-    # + lightning's own subprocess launcher (star2 policy), so SLURM_NTASKS is 1 and a `--gpus
-    # 0,1` run silently trains on ONE rank while holding two GPUs -- observed on cs-venus-05,
-    # job 238262: "Initializing distributed: GLOBAL_RANK: 0, MEMBER: 1/1". Pinning
-    # LightningEnvironment restores the subprocess launcher (creates_processes_externally is
-    # False there, so DDPStrategy spawns the missing ranks itself).
-    #
-    # Single node only, and only when Slurm has fewer tasks than we asked for GPUs. Two launch
-    # shapes are deliberately left alone:
-    #   * a genuine `srun --ntasks=<ranks> python train.py` (SLURM_NTASKS already matches) keeps
-    #     the SLURM environment and its rank assignment;
-    #   * anything with --num_nodes > 1 keeps it too, because LightningEnvironment cannot replace
-    #     it there: its subprocess launcher only spawns *local* children and rendezvouses on
-    #     127.0.0.1, so a multi-node job would sit waiting for ranks that never appear. Multi-node
-    #     must be srun-launched with one task per rank.
+    # Under Slurm, pytorch-lightning 1.9 takes the world size from SLURM_NTASKS whatever --gpus says,
+    # so one Slurm task with --gpus 0,1 trains on one rank. With fewer tasks than GPUs on one node,
+    # let DDP start the ranks itself; an srun with one task per rank, or several nodes, keeps Slurm's.
     slurm_ntasks = int(os.environ.get("SLURM_NTASKS", "1"))
     if ngpu > 1 and opt.num_nodes == 1 and SLURMEnvironment.detect() and slurm_ntasks < ngpu:
         rank_zero_print(
