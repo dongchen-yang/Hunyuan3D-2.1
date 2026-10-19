@@ -12,12 +12,12 @@
 #
 # THIS FILE IS A TEMPLATE: it carries tokens instead of absolute paths, and two scripts write the
 # config that trains from it, under the same basename. On one machine,
-# scripts/lightgenbench/unpack_hf_dataset.sh writes <data_dir>/lightgen-emission-release-alpha-thumb.yaml
-# with the snapshot, the data dir for __STAGE__ and the workers. On an Alliance cluster, the job
+# scripts/lightgenbench/unpack_hf_dataset.sh writes <data_dir>/hunyuan-paint-emission.yaml
+# with the snapshot, the data dir for __DATA_DIR__ and the workers. On an Alliance cluster, the job
 # body (scripts/internal/train_release_body.sh) writes the config into node-local storage each
 # segment:
-#   __ROOT__   the cluster's persistent root, <scratch>/lightgen_mvpaint (venv, hf_home, log)
-#   __STAGE__  $SLURM_TMPDIR/lightgen_release: the unpacked release, re-laid-out to the
+#   __SNAPSHOT__  the pinned Hunyuan3D-2.1 snapshot's hunyuan3d-paintpbr-v2-1/ directory
+#   __DATA_DIR__  $SLURM_TMPDIR/lightgen_release: the unpacked release, re-laid-out to the
 #              fixture layout the loader reads (scripts/lightgenbench/relayout_release.py), the
 #              thumbnail dir and the two example JSONs. Nothing shared between segments, so
 #              there is no symlink to repoint and no JSON to overwrite under a running job.
@@ -52,7 +52,7 @@ model:
       # runs -- so HF_HOME/hub/models--<repo>/snapshots/<rev>/ resolves to exactly this.
       # Pinning the revision is what makes fir and venus the same weights rather than
       # "whatever main was on the day each was staged".
-      pretrained_model_name_or_path: __ROOT__/hf_home/hub/models--tencent--Hunyuan3D-2.1/snapshots/0b94677654c57bb9a6b6845cd7b704ccf551d327/hunyuan3d-paintpbr-v2-1
+      pretrained_model_name_or_path: __SNAPSHOT__
       custom_pipeline: ./hunyuanpaintpbr
 
 data:
@@ -74,17 +74,17 @@ data:
           # then upstream augment_image (identity p=0.5; rotation/scale/translation/
           # perspective; fill = the drawn gray/black/white background). The release ships the
           # thumbnail as <uuid>/thumbnail.png; relayout_release.py hard-links each one to
-          # __STAGE__/thumbs/<uuid>.png, and make_example_lists.py --thumbnail_dir proves every
+          # __DATA_DIR__/thumbs/<uuid>.png, and make_example_lists.py --thumbnail_dir proves every
           # listed sha has one before a batch is touched. No fallback: a missing thumbnail is
           # a bad example, fatal after three distinct ones.
           ref_source: thumbnail
-          thumbnail_dir: __STAGE__/thumbs
+          thumbnail_dir: __DATA_DIR__/thumbs
           augment_ref: true
           # Written INSIDE the job by make_example_lists.py with the ABSOLUTE node-local paths of
           # THIS job, from the train list of the release's splits.json (36,426;
           # --expect_train 36426, NO --allow_missing) with --thumbnail_dir; A7 is the proof
           # the views and the thumbnails are both staged whole.
-          json_path: __STAGE__/release_train.json
+          json_path: __DATA_DIR__/release_train.json
     validation:
       -
         target: src.data.dataloader.objaverse_loader_forTexturePBR.TextureDataset
@@ -94,9 +94,9 @@ data:
           # Same reference source, NO augmentation: val/emission_mse must compare checkpoints
           # on identical inputs.
           ref_source: thumbnail
-          thumbnail_dir: __STAGE__/thumbs
+          thumbnail_dir: __DATA_DIR__/thumbs
           augment_ref: false
-          json_path: __STAGE__/release_val64.json
+          json_path: __DATA_DIR__/release_val64.json
 
 lightning:
   modelcheckpoint:

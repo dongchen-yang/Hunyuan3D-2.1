@@ -35,7 +35,7 @@ same for `plans/2026-09-16-hunyuan3d-paint-refactor.md`); use them as a source o
 - [ ] 16. Cut-over (per D8); runs after step 22, onto Part 2's final tree
 - [x] 17. Part 2: the internal-only files under `scripts/internal/` (moves only)
 - [x] 18. Part 2: the public data scripts in `scripts/lightgenbench/`
-- [ ] 19. Part 2: the release config named by role
+- [x] 19. Part 2: the release config named by role
 - [ ] 20. Part 2: comments and docstrings at upstream's density, no internal names
 - [ ] 21. Part 2: the README for the public tree; internal notes in `CLAUDE.md`
 - [ ] 22. Part 2: final checks; `release` and the parent follow (needs Dongchen's review, then his go)
@@ -1072,17 +1072,17 @@ unpack on the slice: lists and all 56,007 files identical but the config's 4 ren
 
 ### 19. The release config named by role
 
-- [ ] `cfgs/lightgen-emission-release-alpha-thumb.yaml` → `cfgs/hunyuan-paint-emission.yaml`, beside
+- [x] `cfgs/lightgen-emission-release-alpha-thumb.yaml` → `cfgs/hunyuan-paint-emission.yaml`, beside
   upstream's `hunyuan-paint-pbr.yaml`; the unpack script writes `<data_dir>/hunyuan-paint-emission.yaml`.
-- [ ] Its tokens are named for a user: the snapshot path `__ROOT__/hf_home/hub/models--tencent--Hunyuan3D-2.1/
+- [x] Its tokens are named for a user: the snapshot path `__ROOT__/hf_home/hub/models--tencent--Hunyuan3D-2.1/
   snapshots/<rev>/hunyuan3d-paintpbr-v2-1` (`:55`, the only use of `__ROOT__`) becomes `__SNAPSHOT__`,
   `__STAGE__` becomes `__DATA_DIR__`, `__NUM_WORKERS__` stays. Both fillers (`unpack_hf_dataset.sh:34,120`,
   `train_release_body.sh:39,187`) fill the new names.
-- [ ] Changed on purpose (Keep stable 3 and 10, internal callers only): `train.py` names the logdir after
+- [x] Changed on purpose (Keep stable 3 and 10, internal callers only): `train.py` names the logdir after
   the config, so new runs log to `logs/hunyuan-paint-emission-<name>[-$LIGHTGEN_RUN_TS]/`
   (`train_release_body.sh:223` derives it again; README `:105,124-125`). Past runs keep their names. The
   parent's `AGENTS.md:67` goes on step 22's list.
-- [ ] `test_convert_config.py:59-60` globs `lightgen-*.yaml` and expects 2: it names both configs
+- [x] `test_convert_config.py:59-60` globs `lightgen-*.yaml` and expects 2: it names both configs
   explicitly instead, so the public config stays checked.
 
 Checks: each filler's output, loaded with OmegaConf, equals its output on this step's parent commit;
@@ -1090,7 +1090,9 @@ Checks: each filler's output, loaded with OmegaConf, equals its output on this s
 
 **Instructions:**
 
-**Result:**
+**Result:** Checks on `21a83c7`: `cfgs/hunyuan-paint-emission.yaml`, tokens `__SNAPSHOT__`/`__DATA_DIR__`. Both fillers'
+configs load equal to before (the job body's names the same pinned snapshot); unpack lists and the other files
+identical; `--dry-run`: only `CFG_TMPL=` and the `sed` line differ. Tests 32 of 32. PASS.
 
 ### 20. Comments and docstrings at upstream's density, no internal names
 

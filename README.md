@@ -85,14 +85,14 @@ from `splits.json`, checking that the splits are disjoint and that every shape i
 on disk:
 `release_train.json` (36,426 shapes), `release_val64.json` (the 64 validation shapes training
 validates on) and `release_test.json` (200). Last, it writes the training config
-`<data_dir>/lightgen-emission-release-alpha-thumb.yaml`: `cfgs/lightgen-emission-release-alpha-thumb.yaml`
+`<data_dir>/hunyuan-paint-emission.yaml`: `cfgs/hunyuan-paint-emission.yaml`
 with the weights, the data and the data-loader workers filled in (`SNAPSHOT=<dir>` and
 `NUM_WORKERS=<n>` override the defaults). That is about 37 GB to download and 40 GB unpacked.
 
 ## Training
 
 ```bash
-WANDB_MODE=offline python train.py --base <data_dir>/lightgen-emission-release-alpha-thumb.yaml \
+WANDB_MODE=offline python train.py --base <data_dir>/hunyuan-paint-emission.yaml \
     --name release --logdir logs/ --gpus 0,1,2,3
 ```
 
@@ -102,7 +102,7 @@ steps, bf16, gradient checkpointing. The learning rate restarts every 10,000 ste
 two days in all; a 24 GB GPU cannot train this model. Training logs to Weights & Biases (project
 `LightGen`; log in instead of `WANDB_MODE=offline` to log online).
 
-Outputs go to `logs/lightgen-emission-release-alpha-thumb-release/`: the config as run
+Outputs go to `logs/hunyuan-paint-emission-release/`: the config as run
 (`configs/project.yaml`) and, in `checkpoints/`, `last.ckpt`, the three best by `val/emission_mse`,
 and `troughs/trough-step=000N0000.ckpt` at the end of each learning-rate cycle (17.9 GB each). The
 same command resumes from `last.ckpt`. `train.py` takes no `key=value` overrides (it ignores them):
@@ -121,8 +121,8 @@ validation shapes.
 
 ```bash
 python predict_emission_views.py \
-    --config logs/lightgen-emission-release-alpha-thumb-release/configs/project.yaml \
-    --ckpt logs/lightgen-emission-release-alpha-thumb-release/checkpoints/troughs/trough-step=00040000.ckpt \
+    --config logs/hunyuan-paint-emission-release/configs/project.yaml \
+    --ckpt logs/hunyuan-paint-emission-release/checkpoints/troughs/trough-step=00040000.ckpt \
     --examples_json <data_dir>/release_test.json --thumbnail_dir <data_dir>/thumbs --out <out_dir>
 ```
 

@@ -4,7 +4,6 @@ other byte kept, and every class path the repository's configs name resolves.
     python -m pytest scripts/internal/tests/test_convert_config.py -q
 """
 
-import glob
 import importlib
 import os
 import subprocess
@@ -56,8 +55,8 @@ def _targets(text):
 
 def test_every_class_path_the_configs_name_resolves():
     # Our configs; upstream's cfgs/hunyuan-paint-pbr.yaml names a module upstream itself lacks.
-    paths = glob.glob(os.path.join(HY3DPAINT, "cfgs", "lightgen-*.yaml"))
-    assert len(paths) == 2, paths
+    paths = [os.path.join(HY3DPAINT, "cfgs", n) for n in
+             ("hunyuan-paint-emission.yaml", "lightgen-emission-74k-alpha-thumb-agentic-fir-xg.yaml")]
     paths.append(os.path.join(HY3DPAINT, "scripts", "internal", "gate", "traincheck", "traincheck.yaml"))
     for path in paths:
         text, _ = cc.convert_text(open(path).read())

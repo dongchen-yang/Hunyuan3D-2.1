@@ -16,8 +16,8 @@
 # Then the example lists, from splits.json: release_train.json (all of train), release_val64.json (the
 # 64 validation shapes training validates on, scripts/lightgenbench/val64_release_shas.txt) and
 # release_test.json (all of test). Last, the training config:
-#   <data_dir>/lightgen-emission-release-alpha-thumb.yaml
-# is cfgs/lightgen-emission-release-alpha-thumb.yaml with its paths filled in. It names the
+#   <data_dir>/hunyuan-paint-emission.yaml
+# is cfgs/hunyuan-paint-emission.yaml with its paths filled in. It names the
 # Hunyuan3D-2.1 weights the model starts from, at the revision every run used; download them first:
 #   huggingface-cli download tencent/Hunyuan3D-2.1 --revision 0b94677654c57bb9a6b6845cd7b704ccf551d327 \
 #     --include "hunyuan3d-paintpbr-v2-1/*"
@@ -31,7 +31,7 @@ HFD=$(readlink -f "${1:?download dir}")
 D=$(readlink -f -m "${2:?data dir}")
 JOBS=${JOBS:-8}
 REV=0b94677654c57bb9a6b6845cd7b704ccf551d327
-TEMPLATE=$HY/cfgs/lightgen-emission-release-alpha-thumb.yaml
+TEMPLATE=$HY/cfgs/hunyuan-paint-emission.yaml
 for f in splits.json checksums.sha256; do
   [ -f "$HFD/$f" ] || { echo "ABORT: no $f in $HFD"; exit 2; }
 done
@@ -117,7 +117,7 @@ out = []
 for line in open(template).read().split("\n"):
     if not line.lstrip().startswith("#"):
         line = re.sub(r"^(\s*pretrained_model_name_or_path:).*", lambda m: f"{m.group(1)} {snapshot}", line)
-        line = line.replace("__STAGE__", data_dir).replace("__NUM_WORKERS__", workers)
+        line = line.replace("__DATA_DIR__", data_dir).replace("__NUM_WORKERS__", workers)
         if re.search(r"__[A-Z_]+__", line):
             sys.exit(f"ABORT: unfilled token in {template}: {line.strip()}")
     out.append(line)

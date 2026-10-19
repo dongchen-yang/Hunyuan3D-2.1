@@ -36,7 +36,7 @@ EXPECT_TRAIN=36426
 EXPECT_VAL=200
 EXPECT_TEST=200
 EXPECT_TARS=76          # train 37 + val 1, for each of multiview and thumbnail
-CFG_TMPL=cfgs/lightgen-emission-release-alpha-thumb.yaml
+CFG_TMPL=cfgs/hunyuan-paint-emission.yaml
 SNAP=$ROOT/hf_home/hub/models--tencent--Hunyuan3D-2.1/snapshots/0b94677654c57bb9a6b6845cd7b704ccf551d327/hunyuan3d-paintpbr-v2-1
 : "${SLURM_TMPDIR:?this body stages to node-local storage and needs SLURM_TMPDIR}"
 STAGE=$SLURM_TMPDIR/lightgen_release
@@ -184,7 +184,7 @@ python scripts/lightgenbench/make_example_lists.py \
 CPUS=${SLURM_CPUS_PER_TASK:-48}
 NUM_WORKERS=$(( CPUS / 4 - 2 )); [ "$NUM_WORKERS" -ge 2 ] || NUM_WORKERS=2
 CFG=$STAGE/cfg/$(basename "$CFG_TMPL")
-sed -e "s#__ROOT__#$ROOT#g" -e "s#__STAGE__#$STAGE#g" -e "s#__NUM_WORKERS__#$NUM_WORKERS#g" "$CFG_TMPL" > "$CFG"
+sed -e "s#__SNAPSHOT__#$SNAP#g" -e "s#__DATA_DIR__#$STAGE#g" -e "s#__NUM_WORKERS__#$NUM_WORKERS#g" "$CFG_TMPL" > "$CFG"
 if [ "$SMOKE" = 1 ]; then
     # Plumbing smoke: same model, batch, GPUs and data path; only the schedule is cut. Exact
     # whole-line matches on live lines, each required to hit once.
