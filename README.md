@@ -61,18 +61,15 @@ python predict_emission_views.py \
 Score the predictions with the LightGenBench evaluation, which first turns the six views into atlases: https://github.com/3dlg-hcvc/lightgenbench
 
 ### With our checkpoint
-Our checkpoint trained with the recipe in `<data_dir>/hunyuan-paint-emission.yaml`, the config the data setup wrote. Put the checkpoint and that config where training writes its own, and the prediction command above runs with only `--ckpt` filled in.
+Our checkpoint replaces the Training section; it is coming soon in the Hugging Face repo `3dlg-hcvc/LightgenBench-baselines`.
 ```bash
-# Our checkpoint (coming soon): the Checkpoint column of https://github.com/3dlg-hcvc/lightgenbench#baselines
-mkdir -p logs/hunyuan-paint-emission-release/checkpoints/troughs logs/hunyuan-paint-emission-release/configs
-# Download <our checkpoint>.ckpt into logs/hunyuan-paint-emission-release/checkpoints/troughs/
+# Download the checkpoint and its config into checkpoints/Hunyuan3D-Emission/
+huggingface-cli download 3dlg-hcvc/LightgenBench-baselines --include "Hunyuan3D-Emission/*" --local-dir checkpoints
 
-# The config, where training saves it
-cp <data_dir>/hunyuan-paint-emission.yaml logs/hunyuan-paint-emission-release/configs/project.yaml
-
+# <snapshot>: the hunyuan3d-paintpbr-v2-1/ directory of the environment setup (the config names ours)
 python predict_emission_views.py \
-    --config logs/hunyuan-paint-emission-release/configs/project.yaml \
-    --ckpt logs/hunyuan-paint-emission-release/checkpoints/troughs/<our checkpoint>.ckpt \
+    --config checkpoints/Hunyuan3D-Emission/project.yaml \
+    --ckpt checkpoints/Hunyuan3D-Emission/hunyuan3d-emission.ckpt --snapshot <snapshot> \
     --examples_json <data_dir>/release_test.json --thumbnail_dir <data_dir>/thumbs \
     --out <out_dir>
 ```
