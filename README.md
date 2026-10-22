@@ -60,6 +60,23 @@ python predict_emission_views.py \
 ```
 Score the predictions with the LightGenBench evaluation, which first turns the six views into atlases: https://github.com/3dlg-hcvc/lightgenbench
 
+### With our checkpoint
+Our checkpoint trained with the recipe in `<data_dir>/hunyuan-paint-emission.yaml`, the config the data setup wrote. Put the checkpoint and that config where training writes its own, and the prediction command above runs with only `--ckpt` filled in.
+```bash
+# Our checkpoint (coming soon): the Checkpoint column of https://github.com/3dlg-hcvc/lightgenbench#baselines
+mkdir -p logs/hunyuan-paint-emission-release/checkpoints/troughs logs/hunyuan-paint-emission-release/configs
+# Download <our checkpoint>.ckpt into logs/hunyuan-paint-emission-release/checkpoints/troughs/
+
+# The config, where training saves it
+cp <data_dir>/hunyuan-paint-emission.yaml logs/hunyuan-paint-emission-release/configs/project.yaml
+
+python predict_emission_views.py \
+    --config logs/hunyuan-paint-emission-release/configs/project.yaml \
+    --ckpt logs/hunyuan-paint-emission-release/checkpoints/troughs/<our checkpoint>.ckpt \
+    --examples_json <data_dir>/release_test.json --thumbnail_dir <data_dir>/thumbs \
+    --out <out_dir>
+```
+
 
 
 ## License
