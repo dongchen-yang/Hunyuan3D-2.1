@@ -37,7 +37,26 @@ bash scripts/lightgenbench/unpack_hf_dataset.sh <download_dir> <data_dir>
 
 
 
+## Prediction with Our Checkpoint
+This needs the Environment Setup and Data Setup above; our checkpoint is coming soon in the Hugging Face repo `3dlg-hcvc/LightgenBench-baselines`.
+Predict the six emission views of each test shape with it.
+```bash
+# Download our checkpoint and its config into checkpoints/Hunyuan3D-Emission/
+huggingface-cli download 3dlg-hcvc/LightgenBench-baselines --include "Hunyuan3D-Emission/*" --local-dir checkpoints
+
+# <snapshot>: the hunyuan3d-paintpbr-v2-1/ directory of the environment setup (the config names ours)
+python predict_emission_views.py \
+    --config checkpoints/Hunyuan3D-Emission/project.yaml \
+    --ckpt checkpoints/Hunyuan3D-Emission/hunyuan3d-emission.ckpt --snapshot <snapshot> \
+    --examples_json <data_dir>/release_test.json --thumbnail_dir <data_dir>/thumbs \
+    --out <out_dir>
+```
+Score the predictions with the LightGenBench evaluation, which first turns the six views into atlases: https://github.com/3dlg-hcvc/lightgenbench
+
+
+
 ## Training
+Training finetunes the UNet of the Hunyuan3D 2.1 paint model downloaded in the Environment Setup.
 Train on 4 GPUs with the config the data setup wrote.
 ```bash
 # Writes logs/hunyuan-paint-emission-release/ (rerun to resume); set HF_MODULES_CACHE to a local disk
@@ -48,28 +67,13 @@ A checkpoint is kept at each learning-rate restart, in `logs/hunyuan-paint-emiss
 
 
 
-## Prediction
-Predict the six emission views of each test shape.
+## Prediction with Your Checkpoint
+The same as Prediction with Our Checkpoint, with a checkpoint from Training.
 ```bash
 # <checkpoint>: a checkpoint from logs/hunyuan-paint-emission-release/checkpoints/troughs/
 python predict_emission_views.py \
     --config logs/hunyuan-paint-emission-release/configs/project.yaml \
     --ckpt <checkpoint> \
-    --examples_json <data_dir>/release_test.json --thumbnail_dir <data_dir>/thumbs \
-    --out <out_dir>
-```
-Score the predictions with the LightGenBench evaluation, which first turns the six views into atlases: https://github.com/3dlg-hcvc/lightgenbench
-
-### With our checkpoint
-Our checkpoint replaces the Training section; it is coming soon in the Hugging Face repo `3dlg-hcvc/LightgenBench-baselines`.
-```bash
-# Download the checkpoint and its config into checkpoints/Hunyuan3D-Emission/
-huggingface-cli download 3dlg-hcvc/LightgenBench-baselines --include "Hunyuan3D-Emission/*" --local-dir checkpoints
-
-# <snapshot>: the hunyuan3d-paintpbr-v2-1/ directory of the environment setup (the config names ours)
-python predict_emission_views.py \
-    --config checkpoints/Hunyuan3D-Emission/project.yaml \
-    --ckpt checkpoints/Hunyuan3D-Emission/hunyuan3d-emission.ckpt --snapshot <snapshot> \
     --examples_json <data_dir>/release_test.json --thumbnail_dir <data_dir>/thumbs \
     --out <out_dir>
 ```
