@@ -44,7 +44,7 @@ Predict the six emission views of each test shape with it.
 # Download our checkpoint and its config into checkpoints/Hunyuan3D-Emission/
 huggingface-cli download 3dlg-hcvc/LightgenBench-baselines --include "Hunyuan3D-Emission/*" --local-dir checkpoints
 
-# <snapshot>: the hunyuan3d-paintpbr-v2-1/ directory of the environment setup (the config names ours)
+# <snapshot>: the hunyuan3d-paintpbr-v2-1/ directory of the environment setup (required: the config leaves it out)
 python predict_emission_views.py \
     --config checkpoints/Hunyuan3D-Emission/project.yaml \
     --ckpt checkpoints/Hunyuan3D-Emission/hunyuan3d-emission.ckpt --snapshot <snapshot> \
