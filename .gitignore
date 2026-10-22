@@ -171,3 +171,6 @@ log/
 
 # local tool state and worktrees
 .claude/
+
+# our checkpoints, downloaded as the README says
+checkpoints/
