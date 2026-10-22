@@ -1,6 +1,5 @@
 # Hunyuan3D-Emission: what the emission model's training (hy3dpaint/train.py) and inference import, at
-# the versions of the `hunyuanpaint` env that produced every published result and every refactor check
-# (Python 3.10). Upstream's requirements.txt, beside this file, also covers its demo, app and API code.
+# the versions of the `hunyuanpaint` env that produced the published results (Python 3.10).
 #
 #   pip install -r requirements-emission.txt --extra-index-url https://download.pytorch.org/whl/cu128
 #
@@ -24,4 +23,3 @@ pillow==11.3.0
 opencv-python==4.10.0.84
 tqdm==4.66.5
 wandb==0.28.1
-pytest==9.1.1

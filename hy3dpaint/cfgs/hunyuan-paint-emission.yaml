@@ -2,7 +2,7 @@
 # val 200, test 200): 24-channel conv_in, the TexVerse thumbnail as reference, 4 GPUs x batch 4 =
 # global batch 16, LR 7e-5, 50,000 steps. The learning rate restarts every 10,000 steps (1,000
 # warm-up + 9,000 cosine, HunyuanPaint.configure_optimizers) and a checkpoint is kept at each
-# restart; the release run's checkpoint, step 40,000, was chosen on the validation split.
+# restart; choose among them on the validation split.
 # train.py logs to Weights & Biases: log in, or set WANDB_MODE=offline.
 #
 # A template: scripts/lightgenbench/unpack_hf_dataset.sh writes <data_dir>/hunyuan-paint-emission.yaml

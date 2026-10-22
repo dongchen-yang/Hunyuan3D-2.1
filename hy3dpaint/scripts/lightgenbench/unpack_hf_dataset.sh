@@ -18,7 +18,7 @@
 # release_test.json (all of test). Last, the training config:
 #   <data_dir>/hunyuan-paint-emission.yaml
 # is cfgs/hunyuan-paint-emission.yaml with its paths filled in. It names the
-# Hunyuan3D-2.1 weights the model starts from, at the revision every run used; download them first:
+# Hunyuan3D-2.1 weights the model starts from, at a pinned revision; download them first:
 #   huggingface-cli download tencent/Hunyuan3D-2.1 --revision 0b94677654c57bb9a6b6845cd7b704ccf551d327 \
 #     --include "hunyuan3d-paintpbr-v2-1/*"
 # or set SNAPSHOT=<a copy of its hunyuan3d-paintpbr-v2-1/ directory>. NUM_WORKERS sets the data loader
@@ -83,7 +83,7 @@ echo "[layout] render_cond/000.png, thumbs/<uuid>.png"
 python "$HY/scripts/lightgenbench/relayout_release.py" --root "$D/shapes" --thumbs_out "$D/thumbs" \
   --shas "$D/splits/train.txt" "$D/splits/val.txt" "$D/splits/test.txt"
 
-# The training lists through the builder the release run used, with its checks: the splits disjoint,
+# The training lists, built by make_example_lists.py with its checks: the splits disjoint,
 # every listed shape whole on disk with its thumbnail, none missing.
 echo "[lists] release_train.json, release_val64.json, release_test.json"
 python "$HY/scripts/lightgenbench/make_example_lists.py" \

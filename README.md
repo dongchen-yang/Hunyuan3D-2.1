@@ -1,159 +1,78 @@
-# Hunyuan3D-Paint for emission maps
+# Hunyuan3D-Emission
 
-This repository adapts the multiview texture model of **Hunyuan3D 2.1** (Hunyuan3D-Paint) from PBR
-materials to **emission**. Given six views of a mesh's ground-truth PBR materials and geometry, and an
-image of the object, it generates the emission of the same six views; projecting them onto the mesh's
-UV map is a separate step. It is the Hunyuan3D baseline of LightgenBench
-([Hugging Face `3dlg-hcvc/LightgenBench`](https://huggingface.co/datasets/3dlg-hcvc/LightgenBench)).
+Hunyuan3D-Emission generates the emission of a 3D shape in six views from its PBR materials, its geometry and a reference image. It is a LightGenBench baseline built on the multiview texture model of [Hunyuan3D 2.1](https://github.com/Tencent-Hunyuan/Hunyuan3D-2.1).
 
-Hunyuan3D 2.1 and most of this code are the work of the Tencent Hunyuan3D team:
 
-> **Hunyuan3D 2.1: From Images to High-Fidelity 3D Assets with Production-Ready PBR Material.**
-> Tencent Hunyuan3D Team, 2025. [Report](https://arxiv.org/abs/2506.15442) ·
-> [Code](https://github.com/Tencent-Hunyuan/Hunyuan3D-2.1) ·
-> [Models](https://huggingface.co/tencent/Hunyuan3D-2.1)
 
-The code and weights are under the Tencent Hunyuan 3D Community License (`LICENSE`, `Notice.txt`). If
-you use this code, please cite Hunyuan3D ([below](#citation)). Upstream's own README, for its shape
-model, texture demo, Gradio app and API (all kept here, unchanged), is
-[`README_hunyuan3d.md`](README_hunyuan3d.md).
-
-## What differs from Hunyuan3D-Paint 2.1
-
-- **Input.** Upstream's UNet takes the noisy latent with the normal and position maps' latents (12
-  channels). Here the ground-truth albedo, metallic-roughness and alpha (glTF opacity) views are
-  encoded the same way and appended: `[noisy 0-3 | normal 4-7 | position 8-11 | albedo 12-15 |
-  metallic-roughness 16-19 | alpha 20-23]`. `train.py` widens the pretrained `conv_in` to 24 channels,
-  zero-initializing the new ones.
-- **Output.** One generation stream, the emission, instead of upstream's two (albedo,
-  metallic-roughness). Its learned token and its attention weights start from upstream's albedo
-  stream. The model is `HunyuanPaint` in `hy3dpaint/hunyuanpaintpbr/unet/model.py`; its methods
-  explain the mechanics (`_swap_in_fork_unet`: the UNet rebuilt from this package after the pipeline
-  loads; `_retarget_material_slots`: the one material slot; `_freeze_unreachable_parameters`).
-- **Reference image.** The object's thumbnail (the TexVerse preview image shipped with LightgenBench),
-  through upstream's reference path and its augmentation during training.
-- **Sampling.** The model's `validation_step`: 30 Euler-ancestral steps, no classifier-free guidance.
-  Upstream's `HunyuanPaintPipeline.__call__` does not sample this model.
-- **Data.** The loader (`TextureDataset` in `hy3dpaint/src/data/dataloader/objaverse_loader_forTexturePBR.py`)
-  reads six fixed views per shape. Upstream's PBR training path does not run in this repository.
-
-The upstream files we changed are edited in place, so
-
+## Environment Setup
+From the root of the repository, create the environment and download the pretrained weights.
 ```bash
-git diff 82920d6 -- hy3dpaint/
-```
-
-(upstream's commit this code starts from) shows every change.
-
-## Setup
-
-```bash
-conda create -n hunyuanpaint python=3.10 -y && conda activate hunyuanpaint
+# Create and activate the environment
+conda create -n hunyuanpaint python=3.10 -y
+conda activate hunyuanpaint
 pip install -r requirements-emission.txt --extra-index-url https://download.pytorch.org/whl/cu128
-```
 
-`requirements-emission.txt` lists what training and inference import, at the versions that produced
-our results: torch 2.11 + CUDA 12.8 (RTX 4090, L40S, A40, H100, RTX PRO 6000), diffusers 0.30.0 and
-pytorch-lightning 1.9.5 (the checkpoint format). Upstream's `requirements.txt` covers its demo and app.
-
-The model starts from Hunyuan3D-2.1's paint weights at the revision every run used, and loads
-`facebook/dinov2-giant` for the reference image:
-
-```bash
+# The Hunyuan3D 2.1 paint weights the model starts from, at a pinned revision
 huggingface-cli download tencent/Hunyuan3D-2.1 --revision 0b94677654c57bb9a6b6845cd7b704ccf551d327 \
     --include "hunyuan3d-paintpbr-v2-1/*"
+
+# The image encoder for the reference image
 huggingface-cli download facebook/dinov2-giant
 ```
+Run every command below from `hy3dpaint/`.
 
-On a machine without internet, set `HF_HUB_OFFLINE=1` after these downloads. Run every command
-below from `hy3dpaint/`.
 
-## Data
 
-LightgenBench is gated: accept its terms on the dataset page, then log in (`huggingface-cli login`).
-
+## Data Setup
+The dataset download is described at https://github.com/3dlg-hcvc/lightgenbench.
+This baseline needs the multiview and thumbnail files of the released dataset.
 ```bash
+# Download the files this baseline reads
 huggingface-cli download 3dlg-hcvc/LightgenBench --repo-type dataset --local-dir <download_dir> \
     --include "splits.json" "checksums.sha256" "data/*/multiview/*.tar" "data/*/thumbnail/*.tar"
+
+# Check and unpack them into <data_dir>, write the example lists and the training config
+# <data_dir>/hunyuan-paint-emission.yaml (SNAPSHOT=<dir> points it at the weights outside the Hugging Face cache)
 bash scripts/lightgenbench/unpack_hf_dataset.sh <download_dir> <data_dir>
 ```
 
-The script checks every tar against `checksums.sha256` and unpacks the views and thumbnails into
-`<data_dir>/shapes/<uuid>/` (`render_tex/` holds each view's albedo, metallic-roughness, alpha,
-normal, position and emission maps) and `<data_dir>/thumbs/<uuid>.png`. It writes the example lists
-from `splits.json`, checking that the splits are disjoint and that every shape in them has its files
-on disk:
-`release_train.json` (36,426 shapes), `release_val64.json` (the 64 validation shapes training
-validates on) and `release_test.json` (200). Last, it writes the training config
-`<data_dir>/hunyuan-paint-emission.yaml`: `cfgs/hunyuan-paint-emission.yaml`
-with the weights, the data and the data-loader workers filled in (`SNAPSHOT=<dir>` and
-`NUM_WORKERS=<n>` override the defaults). That is about 37 GB to download and 40 GB unpacked.
+
 
 ## Training
-
+Train on 4 GPUs with the config the data setup wrote.
 ```bash
-WANDB_MODE=offline python train.py --base <data_dir>/hunyuan-paint-emission.yaml \
+# Writes logs/hunyuan-paint-emission-release/; the same command resumes from its last.ckpt
+# HF_MODULES_CACHE on a local disk: every GPU process copies ./hunyuanpaintpbr into it when it loads
+# (log in to Weights & Biases instead of WANDB_MODE=offline to log online)
+HF_MODULES_CACHE=<local_dir> WANDB_MODE=offline python train.py --base <data_dir>/hunyuan-paint-emission.yaml \
     --name release --logdir logs/ --gpus 0,1,2,3
 ```
+A checkpoint is kept at each learning-rate restart, in `logs/hunyuan-paint-emission-release/checkpoints/troughs/`; choose one on the validation split.
 
-This is the recipe of our release run: 4 GPUs × batch 4 = global batch 16, learning rate 7e-5, 50,000
-steps, bf16, gradient checkpointing. The learning rate restarts every 10,000 steps (1,000 warm-up +
-9,000 cosine, each cycle's peak 0.9 times the last). On 4 × H100 80 GB a step took 3.4–3.8 s, about
-two days in all; a 24 GB GPU cannot train this model. Training logs to Weights & Biases (project
-`LightGen`; log in instead of `WANDB_MODE=offline` to log online).
 
-Outputs go to `logs/hunyuan-paint-emission-release/`: the config as run
-(`configs/project.yaml`) and, in `checkpoints/`, `last.ckpt`, the three best by `val/emission_mse`,
-and `troughs/trough-step=000N0000.ckpt` at the end of each learning-rate cycle (17.9 GB each). The
-same command resumes from `last.ckpt`. `train.py` takes no `key=value` overrides (it ignores them):
-to change the recipe, edit the config. With fewer GPUs, keep the global batch at 16 with
-`lightning.trainer.accumulate_grad_batches`, and multiply `val_check_interval` by the same factor: it
-counts batches, while `max_steps` and the checkpoint interval count optimizer steps.
 
-Choose among the trough checkpoints with your own metric on the validation split; do not trust
-`val/emission_mse` or the three "best" checkpoints. Validation samples 64 shapes once each, so the
-value is noisy, and from the second checkpoint on each is ranked by the validation one interval
-earlier (the checkpoint callback runs before the validation of the same step; the first checkpoint
-comes before any validation). We chose step 40,000 by the point-sampled emission IoU on the 200
-validation shapes.
-
-## Inference on the test split
-
+## Prediction
+Predict the six emission views of each test shape.
 ```bash
+# <checkpoint>: a checkpoint from logs/hunyuan-paint-emission-release/checkpoints/troughs/
 python predict_emission_views.py \
     --config logs/hunyuan-paint-emission-release/configs/project.yaml \
-    --ckpt logs/hunyuan-paint-emission-release/checkpoints/troughs/trough-step=00040000.ckpt \
-    --examples_json <data_dir>/release_test.json --thumbnail_dir <data_dir>/thumbs --out <out_dir>
+    --ckpt <checkpoint> \
+    --examples_json <data_dir>/release_test.json --thumbnail_dir <data_dir>/thumbs \
+    --out <out_dir>
 ```
+This writes the predictions to `<out_dir>`.
+The six views per shape are scored after the LightGenBench evaluation turns them into atlases.
+Score the predictions with the LightGenBench evaluation: https://github.com/3dlg-hcvc/lightgenbench
 
-This writes `<out_dir>/<uuid>/seed00/00{0..5}_emission.png`, the six predicted views (512 × 512, in the
-camera order of the shape's `render_tex/`), and `<out_dir>/manifest.json`. `--seeds N` samples N seeds
-per shape. Each shape's noise comes from its uuid and the seed index, not from its place in the list;
-on one GPU type a rerun writes the same bytes, and another GPU type differs slightly (a mean of 0.1/255
-between an RTX 4090 and an RTX PRO 6000). A 24 GB GPU is enough, at about 4 s per shape on an RTX
-4090. Projecting the views onto the UV map and the benchmark's scoring are not part of this
-repository.
 
-A config written by an earlier version of this code (such as our runs') names older class paths. `predict_emission_views.py` converts it on load; to train from one, convert it first with
-`python scripts/convert_config.py <old.yaml> <new.yaml>`. Our checkpoints need no conversion (they hold
-weights and optimizer state, no class of this code); `scripts/convert_config.py --ckpt` checks one.
 
-## Repository
+## License
+The code and weights are under the Tencent Hunyuan 3D 2.1 Community License (`LICENSE`, `Notice.txt`), which grants no rights in the European Union, the United Kingdom and South Korea.
 
-| path (under `hy3dpaint/`) | contents |
-|---|---|
-| `train.py`, `predict_emission_views.py` | training; inference on chosen shapes |
-| `hunyuanpaintpbr/` | the model (`unet/model.py`) and the UNet (`unet/modules.py`), upstream's files edited in place |
-| `src/data/dataloader/objaverse_loader_forTexturePBR.py` | the loader, upstream's file with our class |
-| `cfgs/hunyuan-paint-emission.yaml` | the training config template (upstream's `hunyuan-paint-pbr.yaml` beside it) |
-| `scripts/lightgenbench/` | `unpack_hf_dataset.sh`: the Hugging Face dataset to the data folder and config; what it runs (re-layout, example lists) |
-| `scripts/convert_config.py` | configs and checkpoints of earlier versions of this code to the current class paths |
 
-Upstream's shape model (`hy3dshape/`), texture demo (`demo.py`, `textureGenPipeline.py`), Gradio app
-and API are unchanged.
 
 ## Citation
-
 ```bibtex
 @misc{hunyuan3d2025hunyuan3d,
     title={Hunyuan3D 2.1: From Images to High-Fidelity 3D Assets with Production-Ready PBR Material},
@@ -171,5 +90,21 @@ and API are unchanged.
     eprint={2501.12202},
     archivePrefix={arXiv},
     primaryClass={cs.CV}
+}
+```
+Hunyuan3D-Paint 2.1 builds on RomanTex and MaterialMVP, so please cite them as well.
+```bibtex
+@article{feng2025romantex,
+  title={RomanTex: Decoupling 3D-aware Rotary Positional Embedded Multi-Attention Network for Texture Synthesis},
+  author={Feng, Yifei and Yang, Mingxin and Yang, Shuhui and Zhang, Sheng and Yu, Jiaao and Zhao, Zibo and Liu, Yuhong and Jiang, Jie and Guo, Chunchao},
+  journal={arXiv preprint arXiv:2503.19011},
+  year={2025}
+}
+
+@article{he2025materialmvp,
+  title={MaterialMVP: Illumination-Invariant Material Generation via Multi-view PBR Diffusion},
+  author={He, Zebin and Yang, Mingxin and Yang, Shuhui and Tang, Yixuan and Wang, Tao and Zhang, Kaihao and Chen, Guanying and Liu, Yuhong and Jiang, Jie and Guo, Chunchao and Luo, Wenhan},
+  journal={arXiv preprint arXiv:2503.10289},
+  year={2025}
 }
 ```

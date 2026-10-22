@@ -19,9 +19,8 @@ in the camera order of the shape's `render_tex/` views. The sampling is the mode
 from its uuid and the seed index, not from its place in the list. On one GPU type a rerun writes the
 same bytes; another GPU type gives slightly different ones. A 24 GB GPU is enough.
 
-A config that names the class paths of earlier versions of this code is converted on load
-(scripts/convert_config.py). Projecting the views onto the UV map and scoring them is done by the
-LightGen evaluation code.
+A config that names the old class paths listed in scripts/convert_config.py is converted on load.
+Projecting the views onto the UV map and scoring them is done by the LightGen evaluation code.
 """
 import argparse
 import hashlib

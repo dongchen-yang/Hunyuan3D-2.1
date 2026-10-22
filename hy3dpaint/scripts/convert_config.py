@@ -16,8 +16,8 @@ those lines change and every other byte is kept. predict_emission_views.py conve
 load; train.py needs a converted file.
 
 A checkpoint is converted without loading it: the class paths its pickle names are rewritten and every
-tensor is copied as stored. Our runs' checkpoints pickle no class of this repository, only weights and
-optimizer state, so they load as they are; --ckpt then says so and writes nothing.
+tensor is copied as stored. A checkpoint that pickles no class of this repository, only weights and
+optimizer state, loads as it is; --ckpt then says so and writes nothing.
 """
 import argparse
 import os
