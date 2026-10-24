@@ -1,4 +1,4 @@
-"""Re-lay-out an unpacked LightgenBench release into the fixture layout the loader reads.
+"""Re-lay-out an unpacked LightGenBench release into the fixture layout the loader reads.
 
 The released dataset (Hugging Face 3dlg-hcvc/LightgenBench) ships one directory per shape:
 

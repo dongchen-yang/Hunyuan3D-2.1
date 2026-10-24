@@ -1,4 +1,4 @@
-# Hunyuan3D-Paint for emission on LightgenBench (Hugging Face 3dlg-hcvc/LightgenBench: train 36,426,
+# Hunyuan3D-Paint for emission on LightGenBench (Hugging Face 3dlg-hcvc/LightgenBench: train 36,426,
 # val 200, test 200): 24-channel conv_in, the TexVerse thumbnail as reference, 4 GPUs x batch 4 =
 # global batch 16, LR 7e-5, 50,000 steps. The learning rate restarts every 10,000 steps (1,000
 # warm-up + 9,000 cosine, HunyuanPaint.configure_optimizers) and a checkpoint is kept at each
